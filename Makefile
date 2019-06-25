@@ -8,10 +8,11 @@ BIN = rawhttp
 BUILD_DIR = ./bin
 
 # List of all .c source files.
-C = $(wildcard ./src/*.c) $(wildcard ./src/hobig/*.c)
+C = $(wildcard ./src/*.c)
+ASM = $(wildcard ./src/*.asm)
 
 # All .o files go to build dir.
-OBJ = $(C:%.c=$(BUILD_DIR)/%.o) ./bin/src/random.o
+OBJ = $(C:%.c=$(BUILD_DIR)/%.o) $(ASM:%.asm=$(BUILD_DIR)/%.o)
 # Gcc/Clang will create these .d files containing dependencies.
 DEP = $(OBJ:%.o=%.d)
 
@@ -24,6 +25,13 @@ $(BUILD_DIR)/$(BIN) : $(OBJ)
 	mkdir -p $(@D)
 	# Just link all the object files.
 	$(CC) $(CFLAGS) $^ $(LDFLAGS) -o $@
+
+# Build target for every single object file.
+$(BUILD_DIR)/%.o : %.asm
+	mkdir -p $(@D)
+	# The -MMD flags additionaly creates a .d file with
+	# the same name as the .o file.
+	nasm -felf64 $< -o $@
 
 # Include all .d files
 -include $(DEP)
