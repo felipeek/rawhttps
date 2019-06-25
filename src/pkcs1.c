@@ -1,17 +1,10 @@
+#include "pkcs1.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <light_array.h>
-#include "hobig.h"
-#include "asn1.h"
 
-typedef unsigned long long int u64;
 extern u64 random_integer(u64 min, u64 max);
-
-typedef struct {
-    char* data;
-    int   length;
-} Decrypt_Data;
 
 #define BIG_ENDIAN_64(X) ((((X) & 0xff00000000000000) >> 56) | \
     (((X) & 0xff000000000000) >> 40) | \
@@ -23,7 +16,7 @@ typedef struct {
     (((X) & 0xff) << 56))
 
 Decrypt_Data
-decrypt_pkcs1_v1_5(PrivateKey pk, HoBigInt encrypted, unsigned int* error) {
+decrypt_pkcs1_v1_5(PrivateKey pk, HoBigInt encrypted, int* error) {
     HoBigInt decr = hobig_int_mod_div(&encrypted, &pk.PrivateExponent, &pk.public.N);
     if(array_length(decr.value) != 32) {
         // error, encrypted message does not contain 2048 bits
@@ -43,7 +36,7 @@ decrypt_pkcs1_v1_5(PrivateKey pk, HoBigInt encrypted, unsigned int* error) {
         // sweep every byte searching for 0xff
         u64 v = decr.value[i];
         for(int k = 56; k >= 0; k -= 8) {
-            if(((v >> k) & 0xff) == 0xff) {
+            if(((v >> k) & 0xff) == 0x00) {
                 index = (i * 64) + k;
                 goto end_loop;
             }

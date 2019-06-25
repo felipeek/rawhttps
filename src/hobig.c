@@ -1,12 +1,5 @@
 #include "hobig.h"
 
-typedef int bool;
-typedef unsigned char u8;
-typedef unsigned long long int u64;
-typedef long long int s64;
-#define true 1
-#define false 0
-
 #include <stdarg.h>
 #include <assert.h>
 #include <light_array.h>
@@ -78,7 +71,7 @@ hobig_free(HoBigInt v) {
 
 static void 
 print_number(unsigned char* num, int length) {
-    bool seen_number = false;
+    boolean seen_number = false;
     for(int i = length-1; i >= 0; --i) {
         if(num[i] == 0 && !seen_number)
             continue;

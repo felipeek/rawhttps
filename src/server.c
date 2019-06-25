@@ -16,6 +16,7 @@
 #include "util.h"
 #include "hobig.h"
 #include "asn1.h"
+#include "pkcs1.h"
 
 #define MAX_QUEUE_SERVER_PENDING_CONNECTIONS 5
 #define RESPONSE_HEADER_DEFAULT_CAPACITY 16
@@ -103,9 +104,16 @@ static void* new_connection_callback(void* arg)
 									PrivateKey pk = asn1_parse_pem_private_key_from_file("./certificate/key_decrypted.pem", &err);
 									hobig_int_print(pk.PrivateExponent);
 									printf("\n");
+									/*
 									HoBigInt i = hobig_int_new_from_memory(pre_master_secret, pre_master_secret_length);
 									HoBigInt res = hobig_int_mod_div(&i, &pk.PrivateExponent, &pk.public.N);
 									logger_log_debug("ERR: %d", err);
+									*/
+									HoBigInt pre_master_secret_bi = hobig_int_new_from_memory((s8*)pre_master_secret, pre_master_secret_length);
+									Decrypt_Data dd = decrypt_pkcs1_v1_5(pk, pre_master_secret_bi, &err);
+									logger_log_debug("error? %d", err);
+									util_buffer_print_hex((u8*)dd.data, dd.length);
+									getchar();
 								} break;
 							}
 						}
