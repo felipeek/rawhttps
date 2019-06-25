@@ -84,19 +84,29 @@ static void* new_connection_callback(void* arg)
 						rawhttp_parser_parse(&p, connection->connected_socket);
 						if (p.rh.protocol_type == HANDSHAKE_PROTOCOL && p.subprotocol.hp.hh.message_type)
 						{
-							case CLIENT_KEY_EXCHANGE_MESSAGE: {
-								u32 pre_master_secret_length = p.subprotocol.hp.message.ckem.premaster_secret_length;
-								u8* pre_master_secret = p.subprotocol.hp.message.ckem.premaster_secret;
-								logger_log_debug("Printing premaster secret...");
-								util_buffer_print_hex(pre_master_secret, (s64)pre_master_secret_length);
+							switch (p.subprotocol.hp.hh.message_type)
+							{
+								case SERVER_CERTIFICATE_MESSAGE:
+								case SERVER_HELLO_MESSAGE:
+								case CLIENT_HELLO_MESSAGE:
+								case SERVER_HELLO_DONE_MESSAGE: {
+									logger_log_error("not supported");
+									continue;
+								} break;
+								case CLIENT_KEY_EXCHANGE_MESSAGE: {
+									u32 pre_master_secret_length = p.subprotocol.hp.message.ckem.premaster_secret_length;
+									u8* pre_master_secret = p.subprotocol.hp.message.ckem.premaster_secret;
+									logger_log_debug("Printing premaster secret...");
+									util_buffer_print_hex(pre_master_secret, (s64)pre_master_secret_length);
 
-								s32 err = 0;
-								PrivateKey pk = asn1_parse_pem_private_key_from_file("./certificate/key_decrypted.pem", &err);
-								hobig_int_print(pk.PrivateExponent);
-								printf("\n");
-								HoBigInt i = hobig_int_new_from_memory(pre_master_secret, pre_master_secret_length);
-								HoBigInt res = hobig_int_mod_div(&i, &pk.PrivateExponent, &pk.public.N);
-								logger_log_debug("ERR: %d", err);
+									s32 err = 0;
+									PrivateKey pk = asn1_parse_pem_private_key_from_file("./certificate/key_decrypted.pem", &err);
+									hobig_int_print(pk.PrivateExponent);
+									printf("\n");
+									HoBigInt i = hobig_int_new_from_memory(pre_master_secret, pre_master_secret_length);
+									HoBigInt res = hobig_int_mod_div(&i, &pk.PrivateExponent, &pk.public.N);
+									logger_log_debug("ERR: %d", err);
+								} break;
 							}
 						}
 						else
@@ -106,8 +116,11 @@ static void* new_connection_callback(void* arg)
 						}
 						
 					} break;
-					case SERVER_HELLO_MESSAGE: {
-						logger_log_error("new_connection_callback: received a SERVER_HELLO_MESSAGE... but we are the server.. wut?");
+					case SERVER_HELLO_MESSAGE:
+					case SERVER_CERTIFICATE_MESSAGE:
+					case CLIENT_KEY_EXCHANGE_MESSAGE:
+					case SERVER_HELLO_DONE_MESSAGE: {
+						logger_log_error("not supported");
 						continue;
 					} break;
 				}

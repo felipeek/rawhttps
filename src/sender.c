@@ -78,8 +78,11 @@ static void send_packet(const tls_packet* tp, s32 connected_socket)
 			fill_handshake_protocol_information(&tp->subprotocol.hp.hh, &db);
 			switch (tp->subprotocol.hp.hh.message_type)
 			{
+				case CLIENT_KEY_EXCHANGE_MESSAGE:
 				case CLIENT_HELLO_MESSAGE: {
 					logger_log_error("send_packet: trying to send client message");
+					util_dynamic_buffer_free(&db);
+					return;
 				} break;
 				case SERVER_HELLO_MESSAGE: {
 					fill_server_hello_message_information(&tp->subprotocol.hp.message.shm, &db);
