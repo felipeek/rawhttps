@@ -148,6 +148,8 @@ s32 rawhttp_parser_parse(tls_packet* packet, s32 connected_socket)
 
 					print_clienthello_message(&packet->subprotocol.hp.message.chm);
 				} break;
+				case SERVER_CERTIFICATE_MESSAGE:
+				case SERVER_HELLO_DONE_MESSAGE:
 				case SERVER_HELLO_MESSAGE: {
 					// @TODO: fix leaks...
 					return -1;
