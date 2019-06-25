@@ -9,11 +9,10 @@
 #include "hobig.h"
 
 typedef unsigned char u8;
-typedef unsigned int u32;
 
 #define LITTLE_ENDIAN_32(X) (((X) << 24) | (((X) << 8) & 0xff0000) | (((X) >> 8) & 0xff00) | ((X) >> 24))
 
-char base64_value(char c) {
+u8 base64_value(u8 c) {
     if(c >= 'A' && c <= 'Z') return c - 'A';
     if(c >= 'a' && c <= 'z') return c - 'a' + 26;
     if(c >= '0' && c <= '9') return c - '0' + 52;
@@ -37,7 +36,7 @@ int is_whitespace(char c) {
 }
 
 Base64_Data 
-base64_decode(const char* in, int length) {
+base64_decode(const u8* in, int length) {
     Base64_Data result = {0};
     char* mem = calloc(4, length);
 
@@ -104,7 +103,7 @@ typedef struct {
 
 typedef struct {
     int length;
-    struct DER_Node_t* data;
+    const char* data;
 } DER_Oct_String;
 
 typedef struct {
@@ -152,7 +151,7 @@ typedef struct DER_Node_t {
     };
 } DER_Node;
 
-int der_get_length(u8* data, unsigned int* error, int* advance) {
+int der_get_length(u8* data, int* error, int* advance) {
     int length = 0;
     data++;
     (*advance)++;
@@ -182,7 +181,7 @@ int der_get_length(u8* data, unsigned int* error, int* advance) {
 }
 
 DER_Node*
-parse_der(Light_Arena* arena, u8* data, int total_length, unsigned int* error) {
+parse_der(Light_Arena* arena, u8* data, int total_length, int* error) {
     u8* at = data;
     int advance = 0;
 
@@ -234,7 +233,7 @@ parse_der(Light_Arena* arena, u8* data, int total_length, unsigned int* error) {
             node->length = length + advance;
             node->bit_string.length = length;
             node->bit_string.unused = unused;
-            node->bit_string.raw_data = at;
+            node->bit_string.raw_data = (const char*)at;
             node->bit_string.data = parse_der(arena, at, length, error);
             at += length;
         } break;
@@ -242,14 +241,14 @@ parse_der(Light_Arena* arena, u8* data, int total_length, unsigned int* error) {
             node->kind = DER_UTF8_STRING;
             node->length = length + advance;
             node->utf8_string.length = length;
-            node->utf8_string.data = at;
+            node->utf8_string.data = (const char*)at;
             at += length;
         } break;
         case DER_OCT_STRING: {
             node->kind = DER_OCT_STRING;
             node->length = length + advance;
             node->oct_string.length = length;
-            node->oct_string.data = at;//parse_der(arena, at, length, error); // VERY buggy code
+            node->oct_string.data = (const char*)at;
             at += length;
         } break;
         case DER_OBJECT_ID: {
@@ -297,7 +296,7 @@ parse_der(Light_Arena* arena, u8* data, int total_length, unsigned int* error) {
                 length--;
                 extra_length++;
             }
-            HoBigInt b = hobig_int_new_from_memory(at, length);
+            HoBigInt b = hobig_int_new_from_memory((const char*)at, length);
             node->kind = DER_INTEGER;
             node->length = length + advance + extra_length;
             node->integer.i = b;
@@ -307,7 +306,7 @@ parse_der(Light_Arena* arena, u8* data, int total_length, unsigned int* error) {
             node->kind = DER_PRINTABLE_STRING;
             node->length = length + advance;
             node->printable_string.length = length;
-            node->printable_string.data = at;
+            node->printable_string.data = (const char*)at;
         } break;
         case DER_SET: {
             node->kind = DER_SET;
@@ -319,7 +318,7 @@ parse_der(Light_Arena* arena, u8* data, int total_length, unsigned int* error) {
             node->kind = DER_UTC_TIME;
             node->length = length + advance;
             node->utc_time.length = length;
-            node->utc_time.data = at;
+            node->utc_time.data = (const char*)at;
         } break;
         case DER_CONSTRUCTED_SEQ: {
             node->kind = DER_CONSTRUCTED_SEQ;
@@ -374,7 +373,7 @@ private_key_free(PrivateKey p) {
 // Reference:
 // https://crypto.stackexchange.com/questions/21102/what-is-the-ssl-private-key-file-format
 PrivateKey
-asn1_parse_pem_private(const u8* data, int length, u32* error, int is_base64_encoded) {
+asn1_parse_pem_private(const u8* data, int length, int* error, int is_base64_encoded) {
     Base64_Data r = {0};
     if(is_base64_encoded) {
         r = base64_decode(data, length);
@@ -390,7 +389,7 @@ asn1_parse_pem_private(const u8* data, int length, u32* error, int is_base64_enc
     }
 
     Light_Arena* arena = arena_create(65535);
-    DER_Node* node = parse_der(arena, r.data, r.length, error);
+    DER_Node* node = parse_der(arena, (u8*)r.data, r.length, error);
     PrivateKey key = {0};
 
     #define FATAL_PEM_PRIVATE(T) if(error) *error |= 1; \
@@ -442,7 +441,7 @@ static Signature_Algorithm signature_algorithm_from_oid(DER_Object_ID oid);
 // Parses PEM file of a public key
 // Reference: https://medium.com/@bn121rajesh/understanding-rsa-public-key-70d900b1033c
 PublicKey
-asn1_parse_pem_public(const u8* data, int length, u32* error, int is_base64_encoded) {
+asn1_parse_pem_public(const u8* data, int length, int* error, int is_base64_encoded) {
     Base64_Data r = {0};
     
     if(is_base64_encoded) {
@@ -459,7 +458,7 @@ asn1_parse_pem_public(const u8* data, int length, u32* error, int is_base64_enco
     }
 
     Light_Arena* arena = arena_create(65535);
-    DER_Node* node = parse_der(arena, r.data, r.length, error);
+    DER_Node* node = parse_der(arena, (u8*)r.data, r.length, error);
     PublicKey pk = {0};
 
     #define FATAL_PEM_PUBLIC(T) if(error) *error |= 1; \
@@ -505,7 +504,7 @@ asn1_parse_pem_public(const u8* data, int length, u32* error, int is_base64_enco
 }
 
 PublicKey
-asn1_parse_public_key(const u8* data, int length, u32* error, int is_base64_encoded) {
+asn1_parse_public_key(const u8* data, int length, int* error, int is_base64_encoded) {
     Base64_Data r = {0};
 
     if(is_base64_encoded) {
@@ -615,8 +614,6 @@ signature_algorithm_from_oid(DER_Object_ID oid) {
 
 static void 
 metadata_from_object_id(RSA_Certificate* certificate, DER_Object_ID oid, Cert_Metadata str) {
-    int length_bytes = oid.length * sizeof(int);
-
     // Reference: https://www.alvestrand.no/objectid/2.5.4.html
     static int attribute_types[] = {2, 5, 4};
     static int pkcs9_signatures[] = {1, 2, 840, 113549, 1, 9};
@@ -674,7 +671,7 @@ metadata_from_object_id(RSA_Certificate* certificate, DER_Object_ID oid, Cert_Me
 }
 
 RSA_Certificate
-asn1_parse_pem_certificate(const u8* data, int length, u32* error, int is_base64_encoded) {
+asn1_parse_pem_certificate(const u8* data, int length, int* error, int is_base64_encoded) {
     Base64_Data r = {0};
 
     if(is_base64_encoded) {
@@ -690,7 +687,7 @@ asn1_parse_pem_certificate(const u8* data, int length, u32* error, int is_base64
     }
 
     Light_Arena* arena = arena_create(65535);
-    DER_Node* node = parse_der(arena, r.data, r.length, error);
+    DER_Node* node = parse_der(arena, (u8*)r.data, r.length, error);
 
     RSA_Certificate certificate = {0};
 
@@ -830,7 +827,7 @@ asn1_parse_public_key_from_file(const char* filename, int* error) {
 
     char* start_data = at;
     while(!is_whitespace(*at)) { at++; at_index++; }
-    PublicKey pubk = asn1_parse_public_key(start_data, at - start_data, error, 1);
+    PublicKey pubk = asn1_parse_public_key((const u8*)start_data, at - start_data, error, 1);
 
     // email may follow but we ignore it
 
@@ -885,7 +882,7 @@ asn1_parse_pem_public_key_from_file(const char* filename, int* error) {
         }
     }
 
-    PublicKey result = asn1_parse_pem_public(d, trimmed_length, error, 1);
+    PublicKey result = asn1_parse_pem_public((const u8*)d, trimmed_length, error, 1);
 
     return result;
 }
@@ -938,7 +935,7 @@ asn1_parse_pem_private_key_from_file(const char* filename, int* error) {
         }
     }
 
-    PrivateKey result = asn1_parse_pem_private(d, trimmed_length, error, 1);
+    PrivateKey result = asn1_parse_pem_private((const u8*)d, trimmed_length, error, 1);
 
     return result;
 }
@@ -992,7 +989,7 @@ asn1_parse_pem_certificate_from_file(const char* filename, int* error) {
         }
     }
 
-    RSA_Certificate result = asn1_parse_pem_certificate(d, trimmed_length, error, 1);
+    RSA_Certificate result = asn1_parse_pem_certificate((const u8*)d, trimmed_length, error, 1);
 
     return result;
 }
