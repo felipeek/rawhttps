@@ -111,9 +111,6 @@ hobig_int_new_from_memory(const char* m, int length) {
     int arr_length = (length + sizeof(u64) - 1) / sizeof(u64);
     result.value = array_new_len(u64, arr_length);
 
-    int block_count = length / sizeof(u64);
-    int rest = length % sizeof(u64);
-
     int i = length;
 	for (int k = 0; i >= sizeof(u64); k++) {
         result.value[k] = bigendian_word(*(u64*)&m[i-sizeof(u64)]);
@@ -176,21 +173,6 @@ hobig_int_print(HoBigInt n) {
 
     free(result);
     free(buffer);
-}
-
-static void 
-big_gen_pow2(int p, u8* buffer, int length) {
-    if(length == 0) return;
-    buffer[0] = 1;
-    for(int i = 0; i < p; ++i) {
-        u8 carry = 0;
-        for(int i = 0; i < length-1; ++i) {
-            u8 a = buffer[i];
-            u8 b = buffer[i];
-            buffer[i] = mult_table[a][b][carry][0]; // this is the result
-            carry = mult_table[a][b][carry][1];
-        }
-    }
 }
 
 HoBigInt
@@ -855,7 +837,6 @@ hobig_random_possible_prime(int bits) {
     array_allocate(result.value, chunk_count);
     array_length(result.value) = chunk_count;
 
-    int its = 0;
     while(1) {
         for(int i = 0; i < chunk_count; ++i) {
             result.value[i] = random_64bit_integer();
