@@ -18,21 +18,24 @@ extern u64 random_integer(u64 min, u64 max);
 Decrypt_Data
 decrypt_pkcs1_v1_5(PrivateKey pk, HoBigInt encrypted, int* error) {
     HoBigInt decr = hobig_int_mod_div(&encrypted, &pk.PrivateExponent, &pk.public.N);
-    if(array_length(decr.value) != 32) {
+    if(array_length(decr.value) % 32 != 0) {
         // error, encrypted message does not contain 2048 bits
-        fprintf(stderr, "Encrypted message must contain 2048 bits\n");
+        fprintf(stderr, "Encrypted message must contain 2048 or 4096 bits\n");
         if(error) *error |= 1;
         return (Decrypt_Data){0};
     }
 
-    if(((decr.value[31] & 0xffff000000000000) >> 48) != 0x0002) {
+    if(((decr.value[array_length(decr.value) - 1] & 0xffff000000000000) >> 48) != 0x0002) {
         // format invalid, but do not accuse error to not be
         // vulnerable to attacks like the one described by
         // https://www.youtube.com/watch?v=y9n5FQlKA6g
     }
 
+	// replace first byte by 0xff just to skip it since its value is 0x0 and we need to find a 0x0 byte
+	decr.value[array_length(decr.value) - 1] |= 0xff00000000000000;
+
     int index = 0;
-    for(int i = 31; i >= 0; --i) {
+    for(int i = array_length(decr.value) - 1; i >= 0; --i) {
         // sweep every byte searching for 0xff
         u64 v = decr.value[i];
         for(int k = 56; k >= 0; k -= 8) {
