@@ -160,6 +160,9 @@ s32 rawhttp_parser_parse(tls_packet* packet, s32 connected_socket)
 				} break;
 			}
 		} break;
+		case CHANGE_CIPHER_SPEC_PROTOCOL: {
+			packet->subprotocol.ccsp.message = *ptr; ++ptr;
+		} break;
 	}
 
 

@@ -95,6 +95,9 @@ static void send_packet(const tls_packet* tp, s32 connected_socket)
 				} break;
 			}
 		} break;
+		case CHANGE_CIPHER_SPEC_PROTOCOL: {
+			logger_log_error("TO DO!");
+		} break;
 	}
 
 	write(connected_socket, db.buffer, db.size);

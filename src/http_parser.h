@@ -4,7 +4,8 @@
 #include "server.h"
 
 typedef enum {
-	HANDSHAKE_PROTOCOL = 0x16
+	HANDSHAKE_PROTOCOL = 0x16,
+	CHANGE_CIPHER_SPEC_PROTOCOL = 0x14
 } protocol_type;
 
 typedef enum {
@@ -12,8 +13,12 @@ typedef enum {
 	SERVER_HELLO_MESSAGE = 0x02,
 	SERVER_CERTIFICATE_MESSAGE = 0x0B,
 	SERVER_HELLO_DONE_MESSAGE = 0x0E,
-	CLIENT_KEY_EXCHANGE_MESSAGE = 0x10
-} message_type;
+	CLIENT_KEY_EXCHANGE_MESSAGE = 0x10,
+} handshake_message_type;
+
+typedef enum {
+	CHANGE_CIPHER_SPEC_MESSAGE = 0x01
+} change_cipher_spec_type;
 
 typedef struct {
 	protocol_type protocol_type;
@@ -22,7 +27,7 @@ typedef struct {
 } record_header;
 
 typedef struct {
-	message_type message_type;
+	handshake_message_type message_type;
 	u32 message_length;
 } handshake_header;
 
@@ -76,9 +81,14 @@ typedef struct {
 } handshake_packet;
 
 typedef struct {
+	u8 message;
+} change_cipher_spec_packet;
+
+typedef struct {
 	record_header rh;
 	union {
 		handshake_packet hp;
+		change_cipher_spec_packet ccsp;
 	} subprotocol;
 } tls_packet;
 

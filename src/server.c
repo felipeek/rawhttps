@@ -81,55 +81,40 @@ static void* new_connection_callback(void* arg)
 						rawhttp_sender_send_server_certificate(connection->connected_socket, cert, cert_size);
 						free(cert);
 						rawhttp_sender_send_server_hello_done(connection->connected_socket);
+					} break;
+					case CLIENT_KEY_EXCHANGE_MESSAGE: {
+						u32 pre_master_secret_length = p.subprotocol.hp.message.ckem.premaster_secret_length;
+						u8* pre_master_secret = p.subprotocol.hp.message.ckem.premaster_secret;
+						logger_log_debug("Printing premaster secret...");
+						util_buffer_print_hex(pre_master_secret, (s64)pre_master_secret_length);
 
-						rawhttp_parser_parse(&p, connection->connected_socket);
-						if (p.rh.protocol_type == HANDSHAKE_PROTOCOL && p.subprotocol.hp.hh.message_type)
-						{
-							switch (p.subprotocol.hp.hh.message_type)
-							{
-								case SERVER_CERTIFICATE_MESSAGE:
-								case SERVER_HELLO_MESSAGE:
-								case CLIENT_HELLO_MESSAGE:
-								case SERVER_HELLO_DONE_MESSAGE: {
-									logger_log_error("not supported");
-									continue;
-								} break;
-								case CLIENT_KEY_EXCHANGE_MESSAGE: {
-									u32 pre_master_secret_length = p.subprotocol.hp.message.ckem.premaster_secret_length;
-									u8* pre_master_secret = p.subprotocol.hp.message.ckem.premaster_secret;
-									logger_log_debug("Printing premaster secret...");
-									util_buffer_print_hex(pre_master_secret, (s64)pre_master_secret_length);
-
-									s32 err = 0;
-									PrivateKey pk = asn1_parse_pem_private_key_from_file("./certificate/key_decrypted.pem", &err);
-									hobig_int_print(pk.PrivateExponent);
-									printf("\n");
-									/*
-									HoBigInt i = hobig_int_new_from_memory(pre_master_secret, pre_master_secret_length);
-									HoBigInt res = hobig_int_mod_div(&i, &pk.PrivateExponent, &pk.public.N);
-									logger_log_debug("ERR: %d", err);
-									*/
-									HoBigInt pre_master_secret_bi = hobig_int_new_from_memory((s8*)pre_master_secret, pre_master_secret_length);
-									Decrypt_Data dd = decrypt_pkcs1_v1_5(pk, pre_master_secret_bi, &err);
-									logger_log_debug("error? %d", err);
-									util_buffer_print_hex((u8*)dd.data, dd.length);
-									getchar();
-								} break;
-							}
-						}
-						else
-						{
-							logger_log_error("not supported");
-							continue;
-						}
-						
+						s32 err = 0;
+						PrivateKey pk = asn1_parse_pem_private_key_from_file("./certificate/key_decrypted.pem", &err);
+						hobig_int_print(pk.PrivateExponent);
+						printf("\n");
+						/*
+						HoBigInt i = hobig_int_new_from_memory(pre_master_secret, pre_master_secret_length);
+						HoBigInt res = hobig_int_mod_div(&i, &pk.PrivateExponent, &pk.public.N);
+						logger_log_debug("ERR: %d", err);
+						*/
+						HoBigInt pre_master_secret_bi = hobig_int_new_from_memory((s8*)pre_master_secret, pre_master_secret_length);
+						//Decrypt_Data dd = decrypt_pkcs1_v1_5(pk, pre_master_secret_bi, &err);
+						//logger_log_debug("error? %d", err);
+						//util_buffer_print_hex((u8*)dd.data, dd.length);
 					} break;
 					case SERVER_HELLO_MESSAGE:
 					case SERVER_CERTIFICATE_MESSAGE:
-					case CLIENT_KEY_EXCHANGE_MESSAGE:
 					case SERVER_HELLO_DONE_MESSAGE: {
 						logger_log_error("not supported");
 						continue;
+					} break;
+				}
+			} break;
+			case CHANGE_CIPHER_SPEC_PROTOCOL: {
+				switch (p.subprotocol.ccsp.message) {
+					case CHANGE_CIPHER_SPEC_MESSAGE: {
+						logger_log_info("Client asked to activate encryption via CHANGE_CIPHER_SPEC message");
+						getchar();
 					} break;
 				}
 			} break;
