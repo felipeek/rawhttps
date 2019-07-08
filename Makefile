@@ -3,7 +3,7 @@ CFLAGS = -Wall -Iinclude -g -m64
 LDFLAGS= -lpthread
 
 # Final binary
-BIN = rawhttp
+BIN = ssltests
 # Put all auto generated stuff to this build dir.
 BUILD_DIR = ./bin
 

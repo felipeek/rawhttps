@@ -1,12 +1,23 @@
 #include <stdio.h>
 #include "server.h"
-#include "common.h"
+#include <signal.h>
+
+rawhttps_server server;
+
+void close_server(int signum)
+{
+	// Stops the server and releases resources
+	rawhttps_server_destroy(&server);
+}
 
 int main()
 {
-	rawhttp_server server;
-	rawhttp_server_init(&server, 8080);
-	rawhttp_server_listen(&server);
+	signal(SIGINT, close_server);
+
+	rawhttps_server_init(&server, 8080);
+
+	// Starts the server. This blocks!
+	rawhttps_server_listen(&server);
 
 	return 0;
 }

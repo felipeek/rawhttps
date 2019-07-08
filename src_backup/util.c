@@ -2,8 +2,9 @@
 #include <stdlib.h>
 #include <memory.h>
 #include <stdio.h>
+#include "logger.h"
 
-void util_dynamic_buffer_new(dynamic_buffer* db, long long capacity)
+void util_dynamic_buffer_new(dynamic_buffer* db, s64 capacity)
 {
 	db->buffer = calloc(1, capacity);
 	db->capacity = capacity;
@@ -15,7 +16,7 @@ void util_dynamic_buffer_free(dynamic_buffer* db)
 	free(db->buffer);
 }
 
-void util_dynamic_buffer_add(dynamic_buffer* db, const void* msg, long long msg_size)
+void util_dynamic_buffer_add(dynamic_buffer* db, const void* msg, s64 msg_size)
 {
 	while (db->size + msg_size + 1 >= db->capacity)
 	{
@@ -28,29 +29,29 @@ void util_dynamic_buffer_add(dynamic_buffer* db, const void* msg, long long msg_
 	db->size += msg_size;
 }
 
-void util_buffer_print_hex(const unsigned char* msg, int size)
+void util_buffer_print_hex(const unsigned char* msg, s64 size)
 {
 	char aux[16];
 	dynamic_buffer log_db;
 	util_dynamic_buffer_new(&log_db, 1024);
 
-	for (long long i = 0; i < size; ++i)
+	for (s64 i = 0; i < size; ++i)
 	{
-		int s = sprintf(aux, "%02hhX ", msg[i]);
+		s32 s = sprintf(aux, "%02hhX ", msg[i]);
 		util_dynamic_buffer_add(&log_db, aux, s);
 	}
 
-	printf("%.*s", (int)log_db.size, log_db.buffer);
+	logger_log_debug("%.*s", log_db.size, log_db.buffer);
 }
 
-unsigned char* util_file_to_memory(const char* path, int* file_size)
+u8* util_file_to_memory(const s8* path, s32* file_size)
 {
 	FILE* file = fopen(path, "rb");
 	fseek(file, 0, SEEK_END);
 	*file_size = ftell(file);
 	fseek(file, 0, SEEK_SET);
-	unsigned char* result = malloc(*file_size * sizeof(unsigned char));
-	fread(result, sizeof(unsigned char), *file_size, file);
+	u8* result = malloc(*file_size * sizeof(u8));
+	fread(result, sizeof(u8), *file_size, file);
 	fclose(file);
 	return result;
 }
