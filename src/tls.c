@@ -4,111 +4,56 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <unistd.h>
+#include <sys/uio.h>
 #include "hobig.h"
 #include "asn1.h"
 #include "pkcs1.h"
 
 // SENDER !
-
-#define BIG_ENDIAN_16(x) (((x & 0xFF00) >> 8) | ((x & 0x00FF) << 8))
+#define MIN(a,b) (((a) < (b)) ? (a) : (b))
+#define BIG_ENDIAN_16(x) ((((x) & 0xFF00) >> 8) | (((x) & 0x00FF) << 8))
 // note: for BIG_ENDIAN_24, since we receive an unsigned int, we keep the last byte untouched, i.e.
 // 01 02 03 04 05 06 00 00 is transformed to 05 06 03 04 01 02 00 00
-#define BIG_ENDIAN_24(x) (((x & 0x000000FF) << 16) | ((x & 0x00FF0000) >> 16) | (x & 0x0000FF00))
-#define BIG_ENDIAN_32(x) (((x & 0xFF000000) >> 24) | ((x & 0x00FF0000) >> 8) | ((x & 0x0000FF00) << 8) | ((x & 0x000000FF) << 24))
+#define BIG_ENDIAN_24(x) ((((x) & 0x000000FF) << 16) | (((x) & 0x00FF0000) >> 16) | ((x) & 0x0000FF00))
+#define BIG_ENDIAN_32(x) ((((x) & 0xFF000000) >> 24) | (((x) & 0x00FF0000) >> 8) | (((x) & 0x0000FF00) << 8) | (((x) & 0x000000FF) << 24))
 
-static void fill_record_protocol_information(const record_header* rh, dynamic_buffer* db)
+static int send_record(const char* data, int record_size, protocol_type type, int connected_socket)
 {
-	unsigned short ssl_version_be = BIG_ENDIAN_16(rh->ssl_version);
-	unsigned short record_length_be = BIG_ENDIAN_16(rh->record_length);
+	struct iovec iov[2];
+	unsigned char record_header[5];
+	record_header[0] = type;
+	*(unsigned short*)(record_header + 1) = BIG_ENDIAN_16(0x0301);
+	*(unsigned short*)(record_header + 3) = BIG_ENDIAN_16(record_size);
 
-	util_dynamic_buffer_add(db, &rh->protocol_type, 1);
-	util_dynamic_buffer_add(db, &ssl_version_be, 2);
-	util_dynamic_buffer_add(db, &record_length_be, 2);
+	iov[0].iov_base = record_header;
+	iov[0].iov_len = 5;
+	iov[1].iov_base = data;
+	iov[1].iov_len = record_size;
+
+	ssize_t written = writev(connected_socket, iov, 2);
+
+	// @TODO: in an excepcional case, writev() could write less bytes than requested...
+	// we should look at writev() documentation and decide what to do in this particular case
+	// for now, throw an error...
+	if (written != 5 + record_size)
+		return -1;
+	
+	return 0;
 }
 
-static void fill_handshake_protocol_information(const handshake_header* hh, dynamic_buffer* db)
+static int send_higher_layer_packet(const char* data, long long size, protocol_type type, int connected_socket)
 {
-	unsigned int message_length_be = BIG_ENDIAN_24(hh->message_length);
-
-	util_dynamic_buffer_add(db, &hh->message_type, 1);
-	util_dynamic_buffer_add(db, &message_length_be, 3);
-}
-
-static void fill_server_hello_message_information(const server_hello_message* shm, dynamic_buffer* db)
-{
-	unsigned short ssl_version_be = BIG_ENDIAN_16(shm->ssl_version);
-	unsigned short selected_cipher_suite_be = BIG_ENDIAN_16(shm->selected_cipher_suite);
-	unsigned short extensions_length_be = BIG_ENDIAN_16(shm->extensions_length);
-
-	util_dynamic_buffer_add(db, &ssl_version_be, 2);
-	util_dynamic_buffer_add(db, shm->random_number, 32);
-	util_dynamic_buffer_add(db, &shm->session_id_length, 1);
-	util_dynamic_buffer_add(db, shm->session_id, shm->session_id_length);
-	util_dynamic_buffer_add(db, &selected_cipher_suite_be, 2);
-	util_dynamic_buffer_add(db, &shm->selected_compression_method, 1);
-	util_dynamic_buffer_add(db, &extensions_length_be, 2);
-	util_dynamic_buffer_add(db, shm->extensions, shm->extensions_length);
-}
-
-static void fill_server_certificate_message_information(const server_certificate_message* scm, dynamic_buffer* db)
-{
-	unsigned int certificates_length = 0;
-	for (int i = 0; i < scm->number_of_certificates; ++i)
-		certificates_length += scm->certificate_info[i].size + 3;
-	certificates_length = BIG_ENDIAN_24(certificates_length);
-
-	util_dynamic_buffer_add(db, &certificates_length, 3);
-	for (int i = 0; i < scm->number_of_certificates; ++i)
+	long long size_remaining = size;
+	while (size_remaining > 0)
 	{
-		unsigned int size = BIG_ENDIAN_24(scm->certificate_info[i].size);
-		util_dynamic_buffer_add(db, &size, 3);
-		util_dynamic_buffer_add(db, scm->certificate_info[i].data, scm->certificate_info[i].size);
-	}
-}
-
-static void fill_server_hello_done_message_information(dynamic_buffer* db)
-{
-
-}
-
-static void send_packet(const record_header* rh, const tls_packet* tp, int connected_socket)
-{
-	dynamic_buffer db;
-	util_dynamic_buffer_new(&db, 1024);
-
-	// this must be redone! we must split the tls packet into several record packets...
-	fill_record_protocol_information(rh, &db);
-
-	switch (rh->protocol_type)
-	{
-		case HANDSHAKE_PROTOCOL: {
-			fill_handshake_protocol_information(&tp->subprotocol.hp.hh, &db);
-			switch (tp->subprotocol.hp.hh.message_type)
-			{
-				case CLIENT_KEY_EXCHANGE_MESSAGE:
-				case CLIENT_HELLO_MESSAGE: {
-					printf("send_packet: trying to send client message");
-					util_dynamic_buffer_free(&db);
-					return;
-				} break;
-				case SERVER_HELLO_MESSAGE: {
-					fill_server_hello_message_information(&tp->subprotocol.hp.message.shm, &db);
-				} break;
-				case SERVER_CERTIFICATE_MESSAGE: {
-					fill_server_certificate_message_information(&tp->subprotocol.hp.message.scm, &db);
-				} break;
-				case SERVER_HELLO_DONE_MESSAGE: {
-					fill_server_hello_done_message_information(&db);
-				} break;
-			}
-		} break;
-		case CHANGE_CIPHER_SPEC_PROTOCOL: {
-			printf("TO DO!");
-		} break;
+		long long size_to_send = MIN(RECORD_PROTOCOL_DATA_MAX_SIZE, size_remaining);
+		long long buffer_position = size - size_remaining;
+		if (send_record(data + buffer_position, size_to_send, type, connected_socket))
+			return -1;
+		size_remaining -= size_to_send;
 	}
 
-	write(connected_socket, db.buffer, db.size);
-	util_dynamic_buffer_free(&db);
+	return 0;
 }
 
 static void gen_random_number(unsigned char* random_number)
@@ -120,78 +65,100 @@ static void gen_random_number(unsigned char* random_number)
 
 static int rawhttp_sender_send_server_hello(int connected_socket, unsigned short selected_cipher_suite)
 {
+	dynamic_buffer db;
+	util_dynamic_buffer_new(&db, 1024);
+
 	unsigned char random_number[32];
 	gen_random_number(random_number);
 
-	unsigned char session_id_length = 0;
+
 	unsigned short extensions_length = 0;
+	unsigned char session_id_length = 0;
+	unsigned char* session_id = NULL;
+	unsigned short selected_cipher_suite_be = BIG_ENDIAN_16(selected_cipher_suite);
+	unsigned char selected_compression_method = 0;
+	unsigned short extensions_length_be = BIG_ENDIAN_16(extensions_length);
+	unsigned char* extensions = BIG_ENDIAN_16(0);
 
-	tls_packet tp;
-	tp.subprotocol.hp.hh.message_type = SERVER_HELLO_MESSAGE;
-	tp.subprotocol.hp.hh.message_length = 2 + 32 + 1 + session_id_length + 2 + 1 + 2 + extensions_length;
-	tp.subprotocol.hp.message.shm.ssl_version = 0x0301; // hardcoding TLS 1.0 for now
-	tp.subprotocol.hp.message.shm.random_number = (unsigned char*)random_number;
-	tp.subprotocol.hp.message.shm.session_id_length = 0; //@todo
-	tp.subprotocol.hp.message.shm.session_id = NULL; //@todo
-	tp.subprotocol.hp.message.shm.selected_cipher_suite = selected_cipher_suite;
-	tp.subprotocol.hp.message.shm.selected_compression_method = 0; //@todo
-	tp.subprotocol.hp.message.shm.extensions_length = 0; //@todo
-	tp.subprotocol.hp.message.shm.extensions = NULL; //@todo
+	unsigned char message_type = SERVER_HELLO_MESSAGE;
+	unsigned int message_length = BIG_ENDIAN_24(2 + 32 + 1 + session_id_length + 2 + 1 + 2 + extensions_length);
+	unsigned short ssl_version_be = BIG_ENDIAN_16(0x0301);
 
-	record_header rh;
-	rh.protocol_type = HANDSHAKE_PROTOCOL;
-	// @TODO: record_length is not message_length + 4... actually ideally it is... but we can't exceed record's maximum size
-	// so here we need to split the packet if necessary and calculate the record_length for each packet
-	rh.record_length = (unsigned short)tp.subprotocol.hp.hh.message_length + 4;
-	rh.ssl_version = 0x0301; // hardcoding TLS 1.0 for now.
+	util_dynamic_buffer_add(&db, &message_type, 1);						// Message Type (1 Byte)
+	util_dynamic_buffer_add(&db, &message_length, 3);					// Message Length (3 Bytes) [PLACEHOLDER]
+	util_dynamic_buffer_add(&db, &ssl_version_be, 2);					// SSL Version (2 Bytes)
+	util_dynamic_buffer_add(&db, random_number, 32);					// Random Number (32 Bytes)
+	util_dynamic_buffer_add(&db, &session_id_length, 1);				// Session ID Length (1 Byte)
+	util_dynamic_buffer_add(&db, session_id, 0);						// Session ID (n Bytes)
+	util_dynamic_buffer_add(&db, &selected_cipher_suite_be, 2);			// Selected Cipher Suite (2 Bytes)
+	util_dynamic_buffer_add(&db, &selected_compression_method, 1);		// Selected Compression Method (1 Byte)
+	util_dynamic_buffer_add(&db, &extensions_length_be, 2);				// Extensions Length (2 Bytes)
+	util_dynamic_buffer_add(&db, extensions, 0);						// Extensions (n Bytes)
 
-	send_packet(&rh, &tp, connected_socket);
+	if (send_higher_layer_packet(db.buffer, db.size, HANDSHAKE_PROTOCOL, connected_socket))
+		return -1;
 
+	util_dynamic_buffer_free(&db);
 	return 0;
 }
 
-// for now, this function excepts a single certificate
+// for now, this function expects a single certificate
 static int rawhttp_sender_send_server_certificate(int connected_socket, unsigned char* certificate, int certificate_size)
 {
-	certificate_info cert_info;
-	cert_info.data = certificate;
-	cert_info.size = certificate_size;
+	dynamic_buffer db;
+	util_dynamic_buffer_new(&db, 1024);
 
-	tls_packet tp;
-	tp.subprotocol.hp.message.scm.number_of_certificates = 1;
-	tp.subprotocol.hp.message.scm.certificate_info = &cert_info;
-	tp.subprotocol.hp.hh.message_type = SERVER_CERTIFICATE_MESSAGE;
-	tp.subprotocol.hp.hh.message_length = 3;
-	for (int i = 0; i < tp.subprotocol.hp.message.scm.number_of_certificates; ++i)
-		tp.subprotocol.hp.hh.message_length += tp.subprotocol.hp.message.scm.certificate_info[i].size + 3;
+	// For now, we are hardcoding a single certificate!
+	unsigned int number_of_certificates = 1;
+	certificate_info certificates[1];
+	certificates[0].data = certificate;
+	certificates[0].size = certificate_size;
+	// -------------
 
-	record_header rh;
-	rh.protocol_type = HANDSHAKE_PROTOCOL;
-	// @TODO: record_length is not message_length + 4... actually ideally it is... but we can't exceed record's maximum size
-	// so here we need to split the packet if necessary and calculate the record_length for each packet
-	rh.record_length = (unsigned short)tp.subprotocol.hp.hh.message_length + 4;
-	rh.ssl_version = 0x0301; // hardcoding TLS 1.0 for now.
+	unsigned int certificates_length = 0;
+	for (int i = 0; i < number_of_certificates; ++i)
+		certificates_length += certificates[i].size + 3;		// we need to add +3 because each certificate requires 3 bytes for its own length
+	certificates_length = BIG_ENDIAN_24(certificates_length);
 
-	send_packet(&rh, &tp, connected_socket);
-	
+	unsigned char message_type = SERVER_CERTIFICATE_MESSAGE;
+	unsigned int message_length = BIG_ENDIAN_24(3 + certificates_length); // initial 3 bytes are the length of all certificates + their individual lengths
+	unsigned short ssl_version_be = BIG_ENDIAN_16(0x0301);
+
+	util_dynamic_buffer_add(&db, &message_type, 1);						// Message Type (1 Byte)
+	util_dynamic_buffer_add(&db, &message_length, 3);					// Message Length (3 Bytes) [PLACEHOLDER]
+	util_dynamic_buffer_add(&db, &ssl_version_be, 2);					// SSL Version (2 Bytes)
+	util_dynamic_buffer_add(&db, &certificates_length, 3);
+	for (int i = 0; i < number_of_certificates; ++i)
+	{
+		unsigned int size = BIG_ENDIAN_24(certificates[i].size);
+		util_dynamic_buffer_add(&db, &size, 3);
+		util_dynamic_buffer_add(&db, certificates[i].data, certificates[i].size);
+	}
+
+	if (send_higher_layer_packet(db.buffer, db.size, HANDSHAKE_PROTOCOL, connected_socket))
+		return -1;
+
+	util_dynamic_buffer_free(&db);
 	return 0;
 }
 
 static int rawhttp_sender_send_server_hello_done(int connected_socket)
 {
-	tls_packet tp;
-	tp.subprotocol.hp.hh.message_type = SERVER_HELLO_DONE_MESSAGE;
-	tp.subprotocol.hp.hh.message_length = 0;
+	dynamic_buffer db;
+	util_dynamic_buffer_new(&db, 1024);
 
-	record_header rh;
-	rh.protocol_type = HANDSHAKE_PROTOCOL;
-	// @TODO: record_length is not message_length + 4... actually ideally it is... but we can't exceed record's maximum size
-	// so here we need to split the packet if necessary and calculate the record_length for each packet
-	rh.record_length = (unsigned short)tp.subprotocol.hp.hh.message_length + 4;
-	rh.ssl_version = 0x0301; // hardcoding TLS 1.0 for now.
+	unsigned char message_type = SERVER_HELLO_DONE_MESSAGE;
+	unsigned int message_length = BIG_ENDIAN_24(0);
+	unsigned short ssl_version_be = BIG_ENDIAN_16(0x0301);
 
-	send_packet(&rh, &tp, connected_socket);
-	
+	util_dynamic_buffer_add(&db, &message_type, 1);						// Message Type (1 Byte)
+	util_dynamic_buffer_add(&db, &message_length, 3);					// Message Length (3 Bytes) [PLACEHOLDER]
+	util_dynamic_buffer_add(&db, &ssl_version_be, 2);					// SSL Version (2 Bytes)
+
+	if (send_higher_layer_packet(db.buffer, db.size, HANDSHAKE_PROTOCOL, connected_socket))
+		return -1;
+
+	util_dynamic_buffer_free(&db);
 	return 0;
 }
 

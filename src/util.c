@@ -15,6 +15,7 @@ void util_dynamic_buffer_free(dynamic_buffer* db)
 	free(db->buffer);
 }
 
+// returns how many bytes were written
 void util_dynamic_buffer_add(dynamic_buffer* db, const void* msg, long long msg_size)
 {
 	while (db->size + msg_size + 1 >= db->capacity)

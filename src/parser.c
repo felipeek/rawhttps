@@ -18,11 +18,9 @@
 #define RAWHTTP_PARSER_CHUNK_SIZE 1024
 #define RAWHTTP_PARSER_BUFFER_INITIAL_SIZE 1024 // Must be greater than RAWHTTP_PARSER_CHUNK_SIZE
 #define RAWHTTP_PARSER_REQUEST_HEADER_DEFAULT_CAPACITY 16
-#define RECORD_PROTOCOL_DATA_MAX_SIZE 16384
 
 #define LITTLE_ENDIAN_16(x) (((unsigned short)(x)[1]) | ((unsigned short)(x)[0] << 8))
 #define LITTLE_ENDIAN_24(x) (((unsigned int)(x)[2]) | ((unsigned int)(x)[1] << 8) | ((unsigned int)(x)[0] << 16))
-
 
 #include <stdio.h>
 static void rawhttps_parser_buffer_print(const rawhttps_parser_buffer* phb)
