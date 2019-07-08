@@ -81,11 +81,11 @@ static int rawhttp_sender_send_server_hello(int connected_socket, unsigned short
 	unsigned char* extensions = BIG_ENDIAN_16(0);
 
 	unsigned char message_type = SERVER_HELLO_MESSAGE;
-	unsigned int message_length = BIG_ENDIAN_24(2 + 32 + 1 + session_id_length + 2 + 1 + 2 + extensions_length);
+	unsigned int message_length_be = BIG_ENDIAN_24(2 + 32 + 1 + session_id_length + 2 + 1 + 2 + extensions_length);
 	unsigned short ssl_version_be = BIG_ENDIAN_16(0x0301);
 
 	util_dynamic_buffer_add(&db, &message_type, 1);						// Message Type (1 Byte)
-	util_dynamic_buffer_add(&db, &message_length, 3);					// Message Length (3 Bytes) [PLACEHOLDER]
+	util_dynamic_buffer_add(&db, &message_length_be, 3);					// Message Length (3 Bytes) [PLACEHOLDER]
 	util_dynamic_buffer_add(&db, &ssl_version_be, 2);					// SSL Version (2 Bytes)
 	util_dynamic_buffer_add(&db, random_number, 32);					// Random Number (32 Bytes)
 	util_dynamic_buffer_add(&db, &session_id_length, 1);				// Session ID Length (1 Byte)
@@ -118,16 +118,14 @@ static int rawhttp_sender_send_server_certificate(int connected_socket, unsigned
 	unsigned int certificates_length = 0;
 	for (int i = 0; i < number_of_certificates; ++i)
 		certificates_length += certificates[i].size + 3;		// we need to add +3 because each certificate requires 3 bytes for its own length
-	certificates_length = BIG_ENDIAN_24(certificates_length);
 
+	unsigned int certificates_length_be = BIG_ENDIAN_24(certificates_length);
 	unsigned char message_type = SERVER_CERTIFICATE_MESSAGE;
-	unsigned int message_length = BIG_ENDIAN_24(3 + certificates_length); // initial 3 bytes are the length of all certificates + their individual lengths
-	unsigned short ssl_version_be = BIG_ENDIAN_16(0x0301);
+	unsigned int message_length_be = BIG_ENDIAN_24(3 + certificates_length); // initial 3 bytes are the length of all certificates + their individual lengths
 
 	util_dynamic_buffer_add(&db, &message_type, 1);						// Message Type (1 Byte)
-	util_dynamic_buffer_add(&db, &message_length, 3);					// Message Length (3 Bytes) [PLACEHOLDER]
-	util_dynamic_buffer_add(&db, &ssl_version_be, 2);					// SSL Version (2 Bytes)
-	util_dynamic_buffer_add(&db, &certificates_length, 3);
+	util_dynamic_buffer_add(&db, &message_length_be, 3);					// Message Length (3 Bytes) [PLACEHOLDER]
+	util_dynamic_buffer_add(&db, &certificates_length_be, 3);
 	for (int i = 0; i < number_of_certificates; ++i)
 	{
 		unsigned int size = BIG_ENDIAN_24(certificates[i].size);
@@ -148,12 +146,10 @@ static int rawhttp_sender_send_server_hello_done(int connected_socket)
 	util_dynamic_buffer_new(&db, 1024);
 
 	unsigned char message_type = SERVER_HELLO_DONE_MESSAGE;
-	unsigned int message_length = BIG_ENDIAN_24(0);
-	unsigned short ssl_version_be = BIG_ENDIAN_16(0x0301);
+	unsigned int message_length_be = BIG_ENDIAN_24(0);
 
 	util_dynamic_buffer_add(&db, &message_type, 1);						// Message Type (1 Byte)
-	util_dynamic_buffer_add(&db, &message_length, 3);					// Message Length (3 Bytes) [PLACEHOLDER]
-	util_dynamic_buffer_add(&db, &ssl_version_be, 2);					// SSL Version (2 Bytes)
+	util_dynamic_buffer_add(&db, &message_length_be, 3);					// Message Length (3 Bytes) [PLACEHOLDER]
 
 	if (send_higher_layer_packet(db.buffer, db.size, HANDSHAKE_PROTOCOL, connected_socket))
 		return -1;
