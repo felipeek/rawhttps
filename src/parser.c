@@ -28,7 +28,7 @@
 static void rawhttps_parser_buffer_print(const rawhttps_parser_buffer* phb)
 {
 	printf("Printing parser buffer...\n");
-	for (int i = 0; i < phb->packet_size; ++i)
+	for (int i = 0; i < phb->buffer_position_fetch; ++i)
 	{
 		printf("%02hhX ", phb->buffer[i]);
 	}
@@ -63,7 +63,45 @@ static void rawhttps_print_clienthello_message(const client_hello_message* chmt)
 		chmt->compression_methods_length, chmt->extensions_length);
 }
 
-static long long rawhttps_parser_fetch_next_chunk(rawhttps_parser_buffer* phb, int connected_socket)
+// creates rawhttps_parser_buffer
+static int rawhttps_parser_buffer_create(rawhttps_parser_buffer* phb)
+{
+	phb->buffer = malloc(sizeof(char) * RAWHTTP_PARSER_BUFFER_INITIAL_SIZE);
+	if (!phb->buffer) return -1;
+	phb->buffer_size = RAWHTTP_PARSER_BUFFER_INITIAL_SIZE;
+	phb->buffer_end = 0;
+	phb->buffer_position_fetch = 0;
+	phb->buffer_position_get = 0;
+	return 0;
+}
+
+// destroys rawhttps_parser_buffer
+static void rawhttps_parser_buffer_destroy(rawhttps_parser_buffer* phb)
+{
+	free(phb->buffer);
+}
+
+// creates rawhttps_parser_state
+int rawhttps_parser_state_create(rawhttps_parser_state* ps)
+{
+	if (rawhttps_parser_buffer_create(&ps->message_buffer))
+		return -1;
+	if (rawhttps_parser_buffer_create(&ps->record_buffer))
+		return -1;
+	ps->type = 0;
+	return 0;
+}
+
+// destroys rawhttps_parser_state
+int rawhttps_parser_state_destroy(rawhttps_parser_state* ps)
+{
+	rawhttps_parser_buffer_destroy(&ps->message_buffer);
+	rawhttps_parser_buffer_destroy(&ps->record_buffer);
+	return 0;
+}
+
+// fetches the next chunk of tcp data and stores in the phb buffer
+static long long rawhttps_parser_fetch_next_tcp_chunk(rawhttps_parser_buffer* phb, int connected_socket)
 {
 	long long size_needed = phb->buffer_end + RAWHTTP_PARSER_CHUNK_SIZE;
 	if (size_needed > phb->buffer_size)
@@ -82,91 +120,70 @@ static long long rawhttps_parser_fetch_next_chunk(rawhttps_parser_buffer* phb, i
 	return size_read;
 }
 
+// clear the phb buffer.
+// data which was already used via 'get' functions will be released and the pointers will be adjusted
 static void rawhttps_parser_buffer_clear(rawhttps_parser_buffer* phb)
 {
-	memmove(phb->buffer, phb->buffer + phb->buffer_position, phb->buffer_end - phb->buffer_position);
-	phb->buffer_end = phb->buffer_end - phb->buffer_position;
-	phb->buffer_position = 0;
-	phb->packet_size = 0;
+	// As of now, this function should only be called after we had successfully parsed some kind of packet.
+	// The buffer_position_fetch and buffer_position_get MUST be the same, since our code only fetches until the end of the next
+	// packet, and after that we build the packet by getting also until the end of the packet.
+	assert(phb->buffer_position_fetch == phb->buffer_position_get);
+	memmove(phb->buffer, phb->buffer + phb->buffer_position_get, phb->buffer_end - phb->buffer_position_get);
+	phb->buffer_end -= phb->buffer_position_get;
+	phb->buffer_position_fetch -= phb->buffer_position_get;
+	phb->buffer_position_get = 0;
 }
 
-static int rawhttps_parser_fetch_next_bytes(rawhttps_parser_buffer* phb, int connected_socket, unsigned char** ptr, long long num)
+// guarantees that the next 'num' bytes are available in the phb buffer.
+static int rawhttps_parser_guarantee_next_bytes(rawhttps_parser_buffer* phb, int connected_socket, unsigned char** ptr, long long num)
 {
-	while (phb->packet_size + num > phb->buffer_end)
-		if (rawhttps_parser_fetch_next_chunk(phb, connected_socket) == -1)
+	while (phb->buffer_position_fetch + num > phb->buffer_end)
+		if (rawhttps_parser_fetch_next_tcp_chunk(phb, connected_socket) == -1)
 			return -1;
 
-	phb->packet_size += num;
-	*ptr = phb->buffer + phb->packet_size - num;
+	phb->buffer_position_fetch += num;
+	*ptr = phb->buffer + phb->buffer_position_fetch - num;
 	return 0;
 }
 
-static int rawhttps_parser_fetch_record(rawhttps_parser_buffer* phb, int connected_socket)
+// guarantees that the next record packet is available as a whole in the phb buffer.
+static int rawhttps_parser_guarantee_record(rawhttps_parser_buffer* phb, int connected_socket)
 {
 	unsigned char* ptr;
 
 	// fetch record header.
 	// the fourth/fifth bytes are the length
-	if (rawhttps_parser_fetch_next_bytes(phb, connected_socket, &ptr, 5))
+	if (rawhttps_parser_guarantee_next_bytes(phb, connected_socket, &ptr, 5))
 		return -1;
 
 	unsigned short record_length = LITTLE_ENDIAN_16(ptr + 3);
 
 	// get record
-	if (rawhttps_parser_fetch_next_bytes(phb, connected_socket, &ptr, record_length))
+	if (rawhttps_parser_guarantee_next_bytes(phb, connected_socket, &ptr, record_length))
 		return -1;
 
 	return 0;
 }
 
+// gets next 'num' bytes from phb buffer.
+// this function basically increments the internal buffer_position_get pointer and returns a pointer to the data via 'ptr'
+// if the data was not fetched previously by the 'fetch' functions, an error is returned.
 static int rawhttps_parser_get_next_bytes(rawhttps_parser_buffer* phb, long long num, unsigned char** ptr)
 {
-	if (phb->buffer_position + num > phb->packet_size)
+	if (phb->buffer_position_get + num > phb->buffer_position_fetch)
 		return -1;
 
-	phb->buffer_position += num;
-	*ptr = phb->buffer + phb->buffer_position - num;
+	phb->buffer_position_get += num;
+	*ptr = phb->buffer + phb->buffer_position_get - num;
 	return 0;
 }
 
-static int rawhttps_parser_buffer_create(rawhttps_parser_buffer* phb)
-{
-	phb->buffer = malloc(sizeof(char) * RAWHTTP_PARSER_BUFFER_INITIAL_SIZE);
-	if (!phb->buffer) return -1;
-	phb->buffer_size = RAWHTTP_PARSER_BUFFER_INITIAL_SIZE;
-	phb->buffer_end = 0;
-	phb->packet_size = 0;
-	phb->buffer_position = 0;
-	return 0;
-}
-
-static void rawhttps_parser_buffer_destroy(rawhttps_parser_buffer* phb)
-{
-	free(phb->buffer);
-}
-
-int rawhttps_parser_message_buffer_create(rawhttps_message_buffer* message_buffer)
-{
-	if (rawhttps_parser_buffer_create(&message_buffer->message_buffer))
-		return -1;
-	if (rawhttps_parser_buffer_create(&message_buffer->record_buffer))
-		return -1;
-	message_buffer->type = 0;
-	return 0;
-}
-
-int rawhttps_parser_message_buffer_destroy(rawhttps_message_buffer* message_buffer)
-{
-	rawhttps_parser_buffer_destroy(&message_buffer->message_buffer);
-	rawhttps_parser_buffer_destroy(&message_buffer->record_buffer);
-	return 0;
-}
-
+// gets the data of the next record packet and stores in the received buffer. The type is also returned via 'type'
 static long long rawhttps_get_record_data(rawhttps_parser_buffer* record_buffer, int connected_socket, unsigned char* data,	protocol_type* type)
 {
 	unsigned char* ptr;
 
-	if (rawhttps_parser_fetch_record(record_buffer, connected_socket))
+	if (rawhttps_parser_guarantee_record(record_buffer, connected_socket))
 		return -1;
 
 	if (rawhttps_parser_get_next_bytes(record_buffer, 5, &ptr))
@@ -183,94 +200,110 @@ static long long rawhttps_get_record_data(rawhttps_parser_buffer* record_buffer,
 	return record_length;
 }
 
-static long long rawhttps_parser_message_fetch_next_chunk(rawhttps_message_buffer* message_buffer, int connected_socket)
+// fetches the next record data and stores in the message buffer
+static long long rawhttps_parser_message_fetch_next_record(rawhttps_parser_state* ps, int connected_socket)
 {
-	long long size_needed = message_buffer->message_buffer.buffer_end + RECORD_PROTOCOL_DATA_MAX_SIZE;
-	if (size_needed > message_buffer->message_buffer.buffer_size)
+	long long size_needed = ps->message_buffer.buffer_end + RECORD_PROTOCOL_DATA_MAX_SIZE;
+	if (size_needed > ps->message_buffer.buffer_size)
 	{
-		message_buffer->message_buffer.buffer = realloc(message_buffer->message_buffer.buffer, size_needed);
-		message_buffer->message_buffer.buffer_size = size_needed;
+		ps->message_buffer.buffer = realloc(ps->message_buffer.buffer, size_needed);
+		ps->message_buffer.buffer_size = size_needed;
 	}
 
 	long long size_read;
-	if ((size_read = rawhttps_get_record_data(&message_buffer->record_buffer, connected_socket,
-		message_buffer->message_buffer.buffer + message_buffer->message_buffer.buffer_end, &message_buffer->type)) < 0)
+	if ((size_read = rawhttps_get_record_data(&ps->record_buffer, connected_socket,
+		ps->message_buffer.buffer + ps->message_buffer.buffer_end, &ps->type)) < 0)
 		return -1;
 	if (size_read == 0)
 		return -1;
-	message_buffer->message_buffer.buffer_end += size_read;
+	ps->message_buffer.buffer_end += size_read;
 
 	return size_read;
 }
 
-static int rawhttps_parser_message_fetch_next_bytes(rawhttps_message_buffer* message_buffer, int connected_socket,
+// fetches the next record data and stores it in the message buffer if and only if the message buffer is empty
+// this is useful to force the protocol type to be fetched when the message buffer is empty...
+static int rawhttps_parser_message_fetch_next_record_if_buffer_empty(rawhttps_parser_state* ps, int connected_socket) {
+	while (ps->message_buffer.buffer_end == 0)
+		if (rawhttps_parser_message_fetch_next_record(ps, connected_socket) == -1)
+			return -1;
+
+	return 0;
+}
+
+// guarantees that the next 'num' bytes are available in the message_buffer.
+static int rawhttps_parser_message_guarantee_next_bytes(rawhttps_parser_state* ps, int connected_socket,
 	unsigned char** ptr, long long num)
 {
-	while (message_buffer->message_buffer.packet_size + num > message_buffer->message_buffer.buffer_end)
-		if (rawhttps_parser_message_fetch_next_chunk(message_buffer, connected_socket) == -1)
+	while (ps->message_buffer.buffer_position_fetch + num > ps->message_buffer.buffer_end)
+		if (rawhttps_parser_message_fetch_next_record(ps, connected_socket) == -1)
 			return -1;
 
-	message_buffer->message_buffer.packet_size += num;
-	*ptr = message_buffer->message_buffer.buffer + message_buffer->message_buffer.packet_size - num;
+	ps->message_buffer.buffer_position_fetch += num;
+	*ptr = ps->message_buffer.buffer + ps->message_buffer.buffer_position_fetch - num;
 	return 0;
 }
 
-static int rawhttps_parser_message_fetch_record_data_if_buffer_empty(rawhttps_message_buffer* message_buffer, int connected_socket)
-{
-	while (message_buffer->message_buffer.buffer_end == 0)
-		if (rawhttps_parser_message_fetch_next_chunk(message_buffer, connected_socket) == -1)
-			return -1;
-
-	return 0;
-}
-
-static int rawhttps_parser_message_fetch_message(rawhttps_message_buffer* message_buffer, int connected_socket)
+// fetches the next message into the message_buffer
+// this function makes sure that the next message is fully fetched and stored into the message_buffer
+static int rawhttps_parser_message_guarantee_next_message(rawhttps_parser_state* ps, int connected_socket)
 {
 	unsigned char* ptr;
 	unsigned short message_length;
 
-	// We need to force fetching a new record data, so we are able to get the protocol type!
-	if (rawhttps_parser_message_fetch_record_data_if_buffer_empty(message_buffer, connected_socket))
+	// Little hack: We need to force fetching a new record data, so we are able to get the protocol type!
+	if (rawhttps_parser_message_fetch_next_record_if_buffer_empty(ps, connected_socket))
 		return -1;
-	switch (message_buffer->type)
+	
+	// Based on the protocol type, we can proceed by fetching the message length
+	switch (ps->type)
 	{
 		case HANDSHAKE_PROTOCOL: {
-			if (rawhttps_parser_message_fetch_next_bytes(message_buffer, connected_socket, &ptr, 4))
+			// For the handshake protocol, we must fetch 4 bytes to get the message length in the last 3 bytes. (the first byte is the message type)
+			if (rawhttps_parser_message_guarantee_next_bytes(ps, connected_socket, &ptr, 4))
 				return -1;
 			message_length = LITTLE_ENDIAN_24(ptr + 1);
 		} break;
 		case CHANGE_CIPHER_SPEC_PROTOCOL: {
+			// For the change cipher spec protocol, the message length is always 1.
 			message_length = 1; break;
 		} break;
 	}
-	if (rawhttps_parser_message_fetch_next_bytes(message_buffer, connected_socket, &ptr, message_length))
+	
+	// Now, we just make sure that we fetched 'message_length' bytes and we are sure that the whole message is in the buffer :)
+	if (rawhttps_parser_message_guarantee_next_bytes(ps, connected_socket, &ptr, message_length))
 		return -1;
+
 	return 0;
 }
 
-static int rawhttps_parser_message_parse(tls_packet* packet, rawhttps_message_buffer* message_buffer)
+// parses the next message into a tls_packet (packet parameter)
+// this function assumes that the whole message was already fetched and is available in ps->message_buffer!
+// also, packet->type must already be set by the caller.
+static int rawhttps_parser_message_parse(tls_packet* packet, rawhttps_parser_state* ps)
 {
 	unsigned char* ptr;
 
 	switch (packet->type)
 	{
-		// handshake protocol type
+		// HANDSHAKE PROTOCOL TYPE
 		case HANDSHAKE_PROTOCOL: {
 			handshake_packet hp;
-			// request 4 bytes, to get the type and the length.
-			if (rawhttps_parser_get_next_bytes(&message_buffer->message_buffer, 4, &ptr))
+			// If we have a handshake packet, we must first get the first 4 bytes to get the message type and the message length.
+			if (rawhttps_parser_get_next_bytes(&ps->message_buffer, 4, &ptr))
 				return -1;
 			hp.hh.message_type = *ptr; ++ptr;
 			hp.hh.message_length = LITTLE_ENDIAN_24(ptr); ptr += 3;
 
 			rawhttps_print_handshake_header(&hp.hh);
 
-			if (rawhttps_parser_get_next_bytes(&message_buffer->message_buffer, hp.hh.message_length, &ptr))
+			// Now, we get the message data by requesting message_length bytes.
+			// These bytes must already be in the buffer! If they aren't, we throw an error
+			if (rawhttps_parser_get_next_bytes(&ps->message_buffer, hp.hh.message_length, &ptr))
 				return -1;
 
 			switch (hp.hh.message_type)
 			{
-				// clienthello message
 				case CLIENT_HELLO_MESSAGE: {
 					hp.message.chm.ssl_version = LITTLE_ENDIAN_16(ptr); ptr += 2;
 					hp.message.chm.random_number = ptr; ptr += 32;
@@ -287,23 +320,26 @@ static int rawhttps_parser_message_parse(tls_packet* packet, rawhttps_message_bu
 
 					rawhttps_print_clienthello_message(&hp.message.chm);
 				} break;
-				case SERVER_CERTIFICATE_MESSAGE:
-				case SERVER_HELLO_DONE_MESSAGE:
-				case SERVER_HELLO_MESSAGE: {
-					// @todo: fix leaks...
-					return -1;
-				}
 				case CLIENT_KEY_EXCHANGE_MESSAGE: {
 					hp.message.ckem.premaster_secret_length = LITTLE_ENDIAN_16(ptr); ptr += 2;
 					hp.message.ckem.premaster_secret = ptr;
 				} break;
+				// Since we are the server, it doesn't make sense for us to parse these messages
+				case SERVER_CERTIFICATE_MESSAGE:
+				case SERVER_HELLO_DONE_MESSAGE:
+				case SERVER_HELLO_MESSAGE: {
+					return -1;
+				}
 			}
 
 			packet->subprotocol.hp = hp;
 		} break;
+		// CHANGE CIPHER SPEC PROTOCOL TYPE
 		case CHANGE_CIPHER_SPEC_PROTOCOL: {
 			change_cipher_spec_packet ccsp;
-			if (rawhttps_parser_get_next_bytes(&message_buffer->message_buffer, 1, &ptr))
+			// If we have a change_cipher_spec packet, we can be sure that we only have to get a single byte, which is the 'message'
+			// This byte must already be in the buffer! If it isn't, we throw an error
+			if (rawhttps_parser_get_next_bytes(&ps->message_buffer, 1, &ptr))
 				return -1;
 			ccsp.message = *ptr; ++ptr;
 			packet->subprotocol.ccsp = ccsp;
@@ -313,18 +349,19 @@ static int rawhttps_parser_message_parse(tls_packet* packet, rawhttps_message_bu
 	return 0;
 }
 
-int rawhttps_parser_parse_ssl_packet(tls_packet* packet, rawhttps_message_buffer* message_buffer, int connected_socket)
+// Parses the next SSL packet. The packet is returned via parameter 'packet'
+int rawhttps_parser_parse_ssl_packet(tls_packet* packet, rawhttps_parser_state* ps, int connected_socket)
 {
 	// Get Message Data
-	if (rawhttps_parser_message_fetch_message(message_buffer, connected_socket))
+	if (rawhttps_parser_message_guarantee_next_message(ps, connected_socket))
 		return -1;
 
 	// Parse to TLS Packet
-	packet->type = message_buffer->type;
-	if (rawhttps_parser_message_parse(packet, message_buffer))
+	packet->type = ps->type;
+	if (rawhttps_parser_message_parse(packet, ps))
 		return -1;
 
 	// Release Message Data
-	rawhttps_parser_buffer_clear(&message_buffer->message_buffer);
+	rawhttps_parser_buffer_clear(&ps->message_buffer);
 	return 0;
 }

@@ -195,12 +195,12 @@ static int rawhttp_sender_send_server_hello_done(int connected_socket)
 	return 0;
 }
 
-int rawhttps_tls_handshake(rawhttps_message_buffer* message_buffer, int connected_socket)
+int rawhttps_tls_handshake(rawhttps_parser_state* ps, int connected_socket)
 {
 	tls_packet p;
 	while (1)
 	{
-		if (rawhttps_parser_parse_ssl_packet(&p, message_buffer, connected_socket))
+		if (rawhttps_parser_parse_ssl_packet(&p, ps, connected_socket))
 			return -1;
 		switch (p.type)
 		{

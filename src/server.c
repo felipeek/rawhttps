@@ -81,18 +81,18 @@ static void* rawhttps_server_new_connection_callback(void* arg)
 	rawhttps_connection* connection = (rawhttps_connection*)arg;
 	char* client_ip_ascii = inet_ntoa(connection->client_address.sin_addr);
 
-	rawhttps_message_buffer message_buffer;
-	if (rawhttps_parser_message_buffer_create(&message_buffer))
+	rawhttps_parser_state ps;
+	if (rawhttps_parser_state_create(&ps))
 		return NULL;
-	if (rawhttps_tls_handshake(&message_buffer, connection->connected_socket))
+	if (rawhttps_tls_handshake(&ps, connection->connected_socket))
 	{
 		printf("Error in TLS handshake");
 		printf("Connection with client %s will be destroyed", client_ip_ascii);
-		rawhttps_parser_message_buffer_destroy(&message_buffer);
+		rawhttps_parser_state_destroy(&ps);
 		return NULL;
 	}
 
-	rawhttps_parser_message_buffer_destroy(&message_buffer);
+	rawhttps_parser_state_destroy(&ps);
 
 	close(connection->connected_socket);
 	free(connection);
