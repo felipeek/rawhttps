@@ -9,7 +9,6 @@
 #include "asn1.h"
 #include "pkcs1.h"
 
-// SENDER !
 #define MIN(a,b) (((a) < (b)) ? (a) : (b))
 #define BIG_ENDIAN_16(x) ((((x) & 0xFF00) >> 8) | (((x) & 0x00FF) << 8))
 // note: for BIG_ENDIAN_24, since we receive an unsigned int, we keep the last byte untouched, i.e.
@@ -17,6 +16,7 @@
 #define BIG_ENDIAN_24(x) ((((x) & 0x000000FF) << 16) | (((x) & 0x00FF0000) >> 16) | ((x) & 0x0000FF00))
 #define BIG_ENDIAN_32(x) ((((x) & 0xFF000000) >> 24) | (((x) & 0x00FF0000) >> 8) | (((x) & 0x0000FF00) << 8) | (((x) & 0x000000FF) << 24))
 
+// sends a single record packet to the client
 static int send_record(const char* data, int record_size, protocol_type type, int connected_socket)
 {
 	struct iovec iov[2];
@@ -41,6 +41,7 @@ static int send_record(const char* data, int record_size, protocol_type type, in
 	return 0;
 }
 
+// receives a higher layer packet, splits the packet into several record packets and send to the client
 static int send_higher_layer_packet(const char* data, long long size, protocol_type type, int connected_socket)
 {
 	long long size_remaining = size;
@@ -56,21 +57,23 @@ static int send_higher_layer_packet(const char* data, long long size, protocol_t
 	return 0;
 }
 
-static void gen_random_number(unsigned char* random_number)
+// generates the random number that is sent in the SERVER_HELLO packet and it's later used to generate the master key
+// @TODO: this function must be implemented correctly
+static void server_hello_random_number_generate(unsigned char* random_number)
 {
 	// todo: this should be a random number and the four first bytes must be unix time
 	for (int i = 0; i < 32; ++i)
 		random_number[i] = i;
 }
 
-static int rawhttp_sender_send_server_hello(int connected_socket, unsigned short selected_cipher_suite)
+// send to the client a new HANDSHAKE packet, with message type SERVER_HELLO
+static int rawhttp_handshake_server_hello_message_send(int connected_socket, unsigned short selected_cipher_suite)
 {
 	dynamic_buffer db;
 	util_dynamic_buffer_new(&db, 1024);
 
 	unsigned char random_number[32];
-	gen_random_number(random_number);
-
+	server_hello_random_number_generate(random_number);
 
 	unsigned short extensions_length = 0;
 	unsigned char session_id_length = 0;
@@ -85,7 +88,7 @@ static int rawhttp_sender_send_server_hello(int connected_socket, unsigned short
 	unsigned short ssl_version_be = BIG_ENDIAN_16(0x0301);
 
 	util_dynamic_buffer_add(&db, &message_type, 1);						// Message Type (1 Byte)
-	util_dynamic_buffer_add(&db, &message_length_be, 3);					// Message Length (3 Bytes) [PLACEHOLDER]
+	util_dynamic_buffer_add(&db, &message_length_be, 3);				// Message Length (3 Bytes) [PLACEHOLDER]
 	util_dynamic_buffer_add(&db, &ssl_version_be, 2);					// SSL Version (2 Bytes)
 	util_dynamic_buffer_add(&db, random_number, 32);					// Random Number (32 Bytes)
 	util_dynamic_buffer_add(&db, &session_id_length, 1);				// Session ID Length (1 Byte)
@@ -102,8 +105,10 @@ static int rawhttp_sender_send_server_hello(int connected_socket, unsigned short
 	return 0;
 }
 
-// for now, this function expects a single certificate
-static int rawhttp_sender_send_server_certificate(int connected_socket, unsigned char* certificate, int certificate_size)
+// send to the client a new HANDSHAKE packet, with message type SERVER_CERTIFICATE
+// for now, this function receives a single certificate!
+// @todo: support a chain of certificates
+static int rawhttp_handshake_server_certificate_message_send(int connected_socket, unsigned char* certificate, int certificate_size)
 {
 	dynamic_buffer db;
 	util_dynamic_buffer_new(&db, 1024);
@@ -140,7 +145,8 @@ static int rawhttp_sender_send_server_certificate(int connected_socket, unsigned
 	return 0;
 }
 
-static int rawhttp_sender_send_server_hello_done(int connected_socket)
+// send to the client a new HANDSHAKE packet, with message type SERVER_HELLO_DONE
+static int rawhttp_handshake_server_hello_done_message_send(int connected_socket)
 {
 	dynamic_buffer db;
 	util_dynamic_buffer_new(&db, 1024);
@@ -158,6 +164,7 @@ static int rawhttp_sender_send_server_hello_done(int connected_socket)
 	return 0;
 }
 
+// performs the TLS handshake
 int rawhttps_tls_handshake(rawhttps_parser_state* ps, int connected_socket)
 {
 	tls_packet p;
@@ -174,12 +181,12 @@ int rawhttps_tls_handshake(rawhttps_parser_state* ps, int connected_socket)
 						// we received a client hello message
 						// lets send a server hello message
 						unsigned short selected_cipher_suite = 0x0035;
-						rawhttp_sender_send_server_hello(connected_socket, selected_cipher_suite);
+						rawhttp_handshake_server_hello_message_send(connected_socket, selected_cipher_suite);
 						int cert_size;
 						unsigned char* cert = util_file_to_memory("./certificate/cert_binary", &cert_size);
-						rawhttp_sender_send_server_certificate(connected_socket, cert, cert_size);
+						rawhttp_handshake_server_certificate_message_send(connected_socket, cert, cert_size);
 						free(cert);
-						rawhttp_sender_send_server_hello_done(connected_socket);
+						rawhttp_handshake_server_hello_done_message_send(connected_socket);
 					} break;
 					case CLIENT_KEY_EXCHANGE_MESSAGE: {
 						unsigned int pre_master_secret_length = p.subprotocol.hp.message.ckem.premaster_secret_length;
