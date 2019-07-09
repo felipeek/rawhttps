@@ -2,6 +2,24 @@
 #define RAWHTTPS_PROTOCOL_H
 #define RECORD_PROTOCOL_DATA_MAX_SIZE 16384
 
+typedef struct
+{
+	unsigned char client_random_number[32];
+	unsigned char server_random_number[32];
+	// The premaster secret has 48 bytes when the key-exchange method is RSA! Be careful when implementing DH!
+	unsigned char pre_master_secret[48];
+	unsigned char master_secret[48];
+
+	unsigned char client_write_mac_key[20];
+	unsigned char server_write_mac_key[20];
+	unsigned char client_write_key[16];
+	unsigned char server_write_key[16];
+	unsigned char client_write_IV[16];
+	unsigned char server_write_IV[16];
+
+	int encryption_enabled;
+} rawhttps_tls_state;
+
 typedef enum {
 	HANDSHAKE_PROTOCOL = 0x16,
 	CHANGE_CIPHER_SPEC_PROTOCOL = 0x14

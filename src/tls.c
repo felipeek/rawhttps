@@ -11,6 +11,8 @@
 #include "asn1.h"
 #include "pkcs1.h"
 #include "hmac.h"
+#include "common.h"
+#include "crypto_hashes.h"
 
 #define MIN(a,b) (((a) < (b)) ? (a) : (b))
 #define BIG_ENDIAN_16(x) ((((x) & 0xFF00) >> 8) | (((x) & 0x00FF) << 8))
@@ -21,6 +23,7 @@
 
 int rawhttps_tls_state_create(rawhttps_tls_state* ts)
 {
+	ts->encryption_enabled = false;
 	return 0;
 }
 
@@ -192,7 +195,7 @@ int rawhttps_tls_handshake(rawhttps_tls_state* ts, rawhttps_parser_state* ps, in
 	tls_packet p;
 	while (1)
 	{
-		if (rawhttps_parser_parse_ssl_packet(&p, ps, connected_socket))
+		if (rawhttps_parser_parse_ssl_packet(ts, &p, ps, connected_socket))
 			return -1;
 		switch (p.type)
 		{
@@ -229,12 +232,23 @@ int rawhttps_tls_handshake(rawhttps_tls_state* ts, rawhttps_parser_state* ps, in
 						memcpy(seed + 32, ts->server_random_number, 32);
 
 						// generate master secret !
-						prf10((char*)ts->pre_master_secret, 48, "master secret", sizeof("master secret") - 1,
+						prf12(sha1, 20, (char*)ts->pre_master_secret, 48, "master secret", sizeof("master secret") - 1,
 							(char*)seed, 64, (char*)ts->master_secret, 48);
+
+						unsigned char key_block[104];
+						prf12(sha1, 20, (char*)ts->master_secret, 48, "key expansion", sizeof("key expansion") - 1,
+							(char*)seed, 64, (char*)key_block, 104);
 						
 						printf("Printing MASTER SECRET...");
 						util_buffer_print_hex(ts->master_secret, 48);
 						printf("\n\n");
+
+						memcpy(ts->client_write_mac_key, key_block, 20);
+						memcpy(ts->server_write_mac_key, key_block + 20, 20);
+						memcpy(ts->client_write_key, key_block + 20 + 20, 16);
+						memcpy(ts->server_write_key, key_block + 20 + 20 + 16, 16);
+						memcpy(ts->client_write_IV, key_block + 20 + 20 + 16 + 16, 16);
+						memcpy(ts->server_write_IV, key_block + 20 + 20 + 16 + 16 + 16, 16);
 					} break;
 					case SERVER_HELLO_MESSAGE:
 					case SERVER_CERTIFICATE_MESSAGE:
@@ -248,7 +262,7 @@ int rawhttps_tls_handshake(rawhttps_tls_state* ts, rawhttps_parser_state* ps, in
 				switch (p.subprotocol.ccsp.message) {
 					case CHANGE_CIPHER_SPEC_MESSAGE: {
 						printf("Client asked to activate encryption via CHANGE_CIPHER_SPEC message\n");
-						getchar();
+						ts->encryption_enabled = true;
 					} break;
 				}
 			} break;

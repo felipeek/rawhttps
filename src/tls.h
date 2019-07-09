@@ -3,15 +3,6 @@
 #include "parser.h"
 #include "protocol.h"
 
-typedef struct
-{
-	unsigned char client_random_number[32];
-	unsigned char server_random_number[32];
-	// The premaster secret has 48 bytes when the key-exchange method is RSA! Be careful when implementing DH!
-	unsigned char pre_master_secret[48];
-	unsigned char master_secret[48];
-} rawhttps_tls_state;
-
 int rawhttps_tls_state_create(rawhttps_tls_state* ts);
 void rawhttps_tls_state_destroy(rawhttps_tls_state* ts);
 int rawhttps_tls_handshake(rawhttps_tls_state* ts, rawhttps_parser_state* ps, int connected_socket);
