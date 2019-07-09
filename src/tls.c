@@ -5,9 +5,12 @@
 #include <stdio.h>
 #include <unistd.h>
 #include <sys/uio.h>
+#include <memory.h>
+#include <assert.h>
 #include "hobig.h"
 #include "asn1.h"
 #include "pkcs1.h"
+#include "hmac.h"
 
 #define MIN(a,b) (((a) < (b)) ? (a) : (b))
 #define BIG_ENDIAN_16(x) ((((x) & 0xFF00) >> 8) | (((x) & 0x00FF) << 8))
@@ -15,6 +18,16 @@
 // 01 02 03 04 05 06 00 00 is transformed to 05 06 03 04 01 02 00 00
 #define BIG_ENDIAN_24(x) ((((x) & 0x000000FF) << 16) | (((x) & 0x00FF0000) >> 16) | ((x) & 0x0000FF00))
 #define BIG_ENDIAN_32(x) ((((x) & 0xFF000000) >> 24) | (((x) & 0x00FF0000) >> 8) | (((x) & 0x0000FF00) << 8) | (((x) & 0x000000FF) << 24))
+
+int rawhttps_tls_state_create(rawhttps_tls_state* ts)
+{
+	return 0;
+}
+
+void rawhttps_tls_state_destroy(rawhttps_tls_state* ts)
+{
+
+}
 
 // sends a single record packet to the client
 static int send_record(const char* data, int record_size, protocol_type type, int connected_socket)
@@ -67,13 +80,10 @@ static void server_hello_random_number_generate(unsigned char* random_number)
 }
 
 // send to the client a new HANDSHAKE packet, with message type SERVER_HELLO
-static int rawhttp_handshake_server_hello_message_send(int connected_socket, unsigned short selected_cipher_suite)
+static int rawhttp_handshake_server_hello_message_send(int connected_socket, unsigned short selected_cipher_suite, unsigned char* random_number)
 {
 	dynamic_buffer db;
 	util_dynamic_buffer_new(&db, 1024);
-
-	unsigned char random_number[32];
-	server_hello_random_number_generate(random_number);
 
 	unsigned short extensions_length = 0;
 	unsigned char session_id_length = 0;
@@ -164,8 +174,20 @@ static int rawhttp_handshake_server_hello_done_message_send(int connected_socket
 	return 0;
 }
 
+static int pre_master_secret_decrypt(unsigned char* result, unsigned char* encrypted, int length)
+{
+	int err = 0;
+	PrivateKey pk = asn1_parse_pem_private_key_from_file("./certificate/key_decrypted.pem", &err);
+	if (err) return -1;
+	HoBigInt encrypted_big_int = hobig_int_new_from_memory((char*)encrypted, length);
+	Decrypt_Data dd = decrypt_pkcs1_v1_5(pk, encrypted_big_int, &err);
+	if (err) return -1;
+	assert(dd.length == 48);	// RSA!
+	memcpy(result, dd.data, 48);
+	return 0;
+}
 // performs the TLS handshake
-int rawhttps_tls_handshake(rawhttps_parser_state* ps, int connected_socket)
+int rawhttps_tls_handshake(rawhttps_tls_state* ts, rawhttps_parser_state* ps, int connected_socket)
 {
 	tls_packet p;
 	while (1)
@@ -178,10 +200,15 @@ int rawhttps_tls_handshake(rawhttps_parser_state* ps, int connected_socket)
 				switch (p.subprotocol.hp.hh.message_type)
 				{
 					case CLIENT_HELLO_MESSAGE: {
+						memcpy(ts->client_random_number, p.subprotocol.hp.message.chm.random_number, 32);
+						printf("Printing client random number...");
+						util_buffer_print_hex(ts->client_random_number, (long long)32);
 						// we received a client hello message
 						// lets send a server hello message
-						unsigned short selected_cipher_suite = 0x0035;
-						rawhttp_handshake_server_hello_message_send(connected_socket, selected_cipher_suite);
+						//unsigned short selected_cipher_suite = 0x0035; // TLS_RSA_WITH_AES_256_CBC_SHA
+						unsigned short selected_cipher_suite = 0x002f; // TLS_RSA_WITH_AES_128_CBC_SHA
+						server_hello_random_number_generate(ts->server_random_number);
+						rawhttp_handshake_server_hello_message_send(connected_socket, selected_cipher_suite, ts->server_random_number);
 						int cert_size;
 						unsigned char* cert = util_file_to_memory("./certificate/cert_binary", &cert_size);
 						rawhttp_handshake_server_certificate_message_send(connected_socket, cert, cert_size);
@@ -189,24 +216,25 @@ int rawhttps_tls_handshake(rawhttps_parser_state* ps, int connected_socket)
 						rawhttp_handshake_server_hello_done_message_send(connected_socket);
 					} break;
 					case CLIENT_KEY_EXCHANGE_MESSAGE: {
-						unsigned int pre_master_secret_length = p.subprotocol.hp.message.ckem.premaster_secret_length;
-						unsigned char* pre_master_secret = p.subprotocol.hp.message.ckem.premaster_secret;
+						unsigned int encrypted_pre_master_secret_length = p.subprotocol.hp.message.ckem.premaster_secret_length;
+						unsigned char* encrypted_pre_master_secret = p.subprotocol.hp.message.ckem.premaster_secret;
+						if (pre_master_secret_decrypt(ts->pre_master_secret, encrypted_pre_master_secret, encrypted_pre_master_secret_length))
+							return -1;
 						printf("Printing premaster secret...");
-						util_buffer_print_hex(pre_master_secret, (long long)pre_master_secret_length);
+						util_buffer_print_hex(encrypted_pre_master_secret, (long long)encrypted_pre_master_secret_length);
+						printf("\n\n");
 
-						int err = 0;
-						PrivateKey pk = asn1_parse_pem_private_key_from_file("./certificate/key_decrypted.pem", &err);
-						hobig_int_print(pk.PrivateExponent);
-						printf("\n");
-						/*
-						HoBigInt i = hobig_int_new_from_memory(pre_master_secret, pre_master_secret_length);
-						HoBigInt res = hobig_int_mod_div(&i, &pk.PrivateExponent, &pk.public.N);
-						printf("ERR: %d", err);
-						*/
-						HoBigInt pre_master_secret_bi = hobig_int_new_from_memory((s8*)pre_master_secret, pre_master_secret_length);
-						//Decrypt_Data dd = decrypt_pkcs1_v1_5(pk, pre_master_secret_bi, &err);
-						//printf("error? %d", err);
-						//util_buffer_print_hex((unsigned char*)dd.data, dd.length);
+						unsigned char seed[64];
+						memcpy(seed, ts->client_random_number, 32);
+						memcpy(seed + 32, ts->server_random_number, 32);
+
+						// generate master secret !
+						prf10((char*)ts->pre_master_secret, 48, "master secret", sizeof("master secret") - 1,
+							(char*)seed, 64, (char*)ts->master_secret, 48);
+						
+						printf("Printing MASTER SECRET...");
+						util_buffer_print_hex(ts->master_secret, 48);
+						printf("\n\n");
 					} break;
 					case SERVER_HELLO_MESSAGE:
 					case SERVER_CERTIFICATE_MESSAGE:
