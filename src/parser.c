@@ -198,6 +198,8 @@ static long long rawhttps_get_record_data(rawhttps_parser_buffer* record_buffer,
 	if (cd->encryption_enabled)
 		// currently we are skipping bytes if record_length % 16 != 0, they will be trash!
 		aes_128_cbc_decrypt(ptr, cd->server_write_key, cd->server_write_IV, record_length / 16, data);
+	else
+		memcpy(data, ptr, record_length);
 
 	rawhttps_parser_buffer_clear(record_buffer);
 	return record_length;
@@ -290,6 +292,9 @@ static int rawhttps_parser_message_parse(tls_packet* packet, rawhttps_parser_sta
 {
 	unsigned char* ptr;
 
+	// FIX BUG: WE CAN'T RETURN A PACKET WITH REFERENCES TO THE MESSAGE_BUFFER!
+	// IT WILL BE RELEASED AS SOON AS THIS FUNCTION RETURNS :)
+
 	switch (packet->type)
 	{
 		// HANDSHAKE PROTOCOL TYPE
@@ -313,8 +318,6 @@ static int rawhttps_parser_message_parse(tls_packet* packet, rawhttps_parser_sta
 				case CLIENT_HELLO_MESSAGE: {
 					hp.message.chm.ssl_version = LITTLE_ENDIAN_16(ptr); ptr += 2;
 					hp.message.chm.random_number = ptr; ptr += 32;
-						printf("Printing client random number...");
-						util_buffer_print_hex(hp.message.chm.random_number, (long long)32);
 					hp.message.chm.session_id_length = *ptr; ++ptr;
 					hp.message.chm.session_id = ptr; ptr += hp.message.chm.session_id_length;
 					hp.message.chm.cipher_suites_length = LITTLE_ENDIAN_16(ptr); ptr += 2;
