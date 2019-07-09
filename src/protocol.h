@@ -37,7 +37,7 @@ typedef struct {
 
 typedef struct {
 	unsigned short ssl_version;
-	unsigned char* random_number; // 32 bytes
+	unsigned char random_number[32];
 	unsigned char session_id_length;
 	unsigned char* session_id;
 	unsigned short cipher_suites_length;

@@ -292,9 +292,6 @@ static int rawhttps_parser_message_parse(tls_packet* packet, rawhttps_parser_sta
 {
 	unsigned char* ptr;
 
-	// FIX BUG: WE CAN'T RETURN A PACKET WITH REFERENCES TO THE MESSAGE_BUFFER!
-	// IT WILL BE RELEASED AS SOON AS THIS FUNCTION RETURNS :)
-
 	switch (packet->type)
 	{
 		// HANDSHAKE PROTOCOL TYPE
@@ -308,32 +305,42 @@ static int rawhttps_parser_message_parse(tls_packet* packet, rawhttps_parser_sta
 
 			rawhttps_print_handshake_header(&hp.hh);
 
-			// Now, we get the message data by requesting message_length bytes.
-			// These bytes must already be in the buffer! If they aren't, we throw an error
-			if (rawhttps_parser_get_next_bytes(&ps->message_buffer, hp.hh.message_length, &ptr))
-				return -1;
-
 			switch (hp.hh.message_type)
 			{
 				case CLIENT_HELLO_MESSAGE: {
-					hp.message.chm.ssl_version = LITTLE_ENDIAN_16(ptr); ptr += 2;
-					hp.message.chm.random_number = ptr; ptr += 32;
-					hp.message.chm.session_id_length = *ptr; ++ptr;
-					hp.message.chm.session_id = ptr; ptr += hp.message.chm.session_id_length;
-					hp.message.chm.cipher_suites_length = LITTLE_ENDIAN_16(ptr); ptr += 2;
-					hp.message.chm.cipher_suites = (unsigned short*)(ptr); ptr += hp.message.chm.cipher_suites_length;
-					
-					hp.message.chm.compression_methods_length = *ptr; ++ptr;
-					hp.message.chm.compression_methods = ptr; ptr += hp.message.chm.compression_methods_length;
-
-					hp.message.chm.extensions_length = LITTLE_ENDIAN_16(ptr); ptr += 2;
-					hp.message.chm.extensions = ptr; ptr += hp.message.chm.extensions_length;
+					if (rawhttps_parser_get_next_bytes(&ps->message_buffer, 2, &ptr)) return -1;
+					hp.message.chm.ssl_version = LITTLE_ENDIAN_16(ptr);
+					if (rawhttps_parser_get_next_bytes(&ps->message_buffer, 32, &ptr)) return -1;
+					memcpy(hp.message.chm.random_number, ptr, 32);
+					if (rawhttps_parser_get_next_bytes(&ps->message_buffer, 1, &ptr)) return -1;
+					hp.message.chm.session_id_length = *ptr;
+					if (rawhttps_parser_get_next_bytes(&ps->message_buffer, hp.message.chm.session_id_length, &ptr)) return -1;
+					hp.message.chm.session_id = malloc(sizeof(unsigned char) * hp.message.chm.session_id_length);
+					memcpy(hp.message.chm.session_id, ptr, hp.message.chm.session_id_length);
+					if (rawhttps_parser_get_next_bytes(&ps->message_buffer, 2, &ptr)) return -1;
+					hp.message.chm.cipher_suites_length = LITTLE_ENDIAN_16(ptr);
+					if (rawhttps_parser_get_next_bytes(&ps->message_buffer, hp.message.chm.cipher_suites_length, &ptr)) return -1;
+					hp.message.chm.cipher_suites = malloc(sizeof(unsigned char) * hp.message.chm.session_id_length);
+					memcpy(hp.message.chm.cipher_suites, ptr, hp.message.chm.cipher_suites_length);
+					if (rawhttps_parser_get_next_bytes(&ps->message_buffer, 1, &ptr)) return -1;
+					hp.message.chm.compression_methods_length = *ptr;
+					if (rawhttps_parser_get_next_bytes(&ps->message_buffer, hp.message.chm.compression_methods_length, &ptr)) return -1;
+					hp.message.chm.compression_methods = malloc(sizeof(unsigned char) * hp.message.chm.compression_methods_length);
+					memcpy(hp.message.chm.compression_methods, ptr, hp.message.chm.compression_methods_length);
+					if (rawhttps_parser_get_next_bytes(&ps->message_buffer, 2, &ptr)) return -1;
+					hp.message.chm.extensions_length = LITTLE_ENDIAN_16(ptr);
+					if (rawhttps_parser_get_next_bytes(&ps->message_buffer, hp.message.chm.extensions_length, &ptr)) return -1;
+					hp.message.chm.extensions = malloc(sizeof(unsigned char) * hp.message.chm.extensions_length);
+					memcpy(hp.message.chm.extensions, ptr, hp.message.chm.extensions_length);
 
 					rawhttps_print_clienthello_message(&hp.message.chm);
 				} break;
 				case CLIENT_KEY_EXCHANGE_MESSAGE: {
-					hp.message.ckem.premaster_secret_length = LITTLE_ENDIAN_16(ptr); ptr += 2;
-					hp.message.ckem.premaster_secret = ptr;
+					if (rawhttps_parser_get_next_bytes(&ps->message_buffer, 2, &ptr)) return -1;
+					hp.message.ckem.premaster_secret_length = LITTLE_ENDIAN_16(ptr);
+					if (rawhttps_parser_get_next_bytes(&ps->message_buffer, hp.message.ckem.premaster_secret_length, &ptr)) return -1;
+					hp.message.ckem.premaster_secret = malloc(sizeof(unsigned char) * hp.message.ckem.premaster_secret_length);
+					memcpy(hp.message.ckem.premaster_secret, ptr, hp.message.ckem.premaster_secret_length);
 				} break;
 				// Since we are the server, it doesn't make sense for us to parse these messages
 				case SERVER_CERTIFICATE_MESSAGE:
@@ -350,13 +357,14 @@ static int rawhttps_parser_message_parse(tls_packet* packet, rawhttps_parser_sta
 			change_cipher_spec_packet ccsp;
 			// If we have a change_cipher_spec packet, we can be sure that we only have to get a single byte, which is the 'message'
 			// This byte must already be in the buffer! If it isn't, we throw an error
-			if (rawhttps_parser_get_next_bytes(&ps->message_buffer, 1, &ptr))
-				return -1;
-			ccsp.message = *ptr; ++ptr;
+			if (rawhttps_parser_get_next_bytes(&ps->message_buffer, 1, &ptr)) return -1;
+			ccsp.message = *ptr;
 			packet->subprotocol.ccsp = ccsp;
 		} break;
 	}
 	
+	// @TODO: We must decide how we will release packets.
+
 	return 0;
 }
 
