@@ -38,7 +38,7 @@ static int send_record(const char* data, int record_size, protocol_type type, in
 	struct iovec iov[2];
 	unsigned char record_header[5];
 	record_header[0] = type;
-	*(unsigned short*)(record_header + 1) = BIG_ENDIAN_16(0x0301);
+	*(unsigned short*)(record_header + 1) = BIG_ENDIAN_16(TLS12);
 	*(unsigned short*)(record_header + 3) = BIG_ENDIAN_16(record_size);
 
 	iov[0].iov_base = record_header;
@@ -98,7 +98,7 @@ static int rawhttp_handshake_server_hello_message_send(int connected_socket, uns
 
 	unsigned char message_type = SERVER_HELLO_MESSAGE;
 	unsigned int message_length_be = BIG_ENDIAN_24(2 + 32 + 1 + session_id_length + 2 + 1 + 2 + extensions_length);
-	unsigned short ssl_version_be = BIG_ENDIAN_16(0x0301);
+	unsigned short ssl_version_be = BIG_ENDIAN_16(TLS12);
 
 	util_dynamic_buffer_add(&db, &message_type, 1);						// Message Type (1 Byte)
 	util_dynamic_buffer_add(&db, &message_length_be, 3);				// Message Length (3 Bytes) [PLACEHOLDER]

@@ -2,6 +2,10 @@
 #define RAWHTTPS_PROTOCOL_H
 #define RECORD_PROTOCOL_DATA_MAX_SIZE 16384
 
+#define TLS12 0x0303
+#define TLS11 0x0302
+#define TLS10 0x0301
+
 typedef struct
 {
 	unsigned char client_random_number[32];
