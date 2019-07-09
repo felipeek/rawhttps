@@ -13,6 +13,7 @@
 #include "hmac.h"
 #include "common.h"
 #include "crypto_hashes.h"
+#include "util.h"
 
 #define MIN(a,b) (((a) < (b)) ? (a) : (b))
 #define BIG_ENDIAN_16(x) ((((x) & 0xFF00) >> 8) | (((x) & 0x00FF) << 8))
@@ -189,13 +190,28 @@ static int pre_master_secret_decrypt(unsigned char* result, unsigned char* encry
 	memcpy(result, dd.data, 48);
 	return 0;
 }
+
+static int get_parser_crypto_data(rawhttps_parser_crypto_data* cd, const rawhttps_tls_state* ts)
+{
+	cd->encryption_enabled = ts->encryption_enabled;
+	if (ts->encryption_enabled)
+	{
+		memcpy(cd->server_write_IV, ts->server_write_IV, 16);
+		memcpy(cd->server_write_key, ts->server_write_key, 16);
+	}
+	return 0;
+}
+
 // performs the TLS handshake
 int rawhttps_tls_handshake(rawhttps_tls_state* ts, rawhttps_parser_state* ps, int connected_socket)
 {
+	rawhttps_parser_crypto_data cd;
 	tls_packet p;
 	while (1)
 	{
-		if (rawhttps_parser_parse_ssl_packet(ts, &p, ps, connected_socket))
+		if (get_parser_crypto_data(&cd, ts))
+			return -1;
+		if (rawhttps_parser_parse_ssl_packet(&cd, &p, ps, connected_socket))
 			return -1;
 		switch (p.type)
 		{
@@ -249,6 +265,9 @@ int rawhttps_tls_handshake(rawhttps_tls_state* ts, rawhttps_parser_state* ps, in
 						memcpy(ts->server_write_key, key_block + 20 + 20 + 16, 16);
 						memcpy(ts->client_write_IV, key_block + 20 + 20 + 16 + 16, 16);
 						memcpy(ts->server_write_IV, key_block + 20 + 20 + 16 + 16 + 16, 16);
+					} break;
+					case FINISHED_MESSAGE: {
+						// Here we need to check if the decryption worked!
 					} break;
 					case SERVER_HELLO_MESSAGE:
 					case SERVER_CERTIFICATE_MESSAGE:
