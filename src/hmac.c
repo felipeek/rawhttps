@@ -61,12 +61,12 @@ void phash(
 
     if(length == 0) return;
     char* temp = calloc(1, hash_result_length_bytes + seed_length);
-    memcpy(temp + hash_result_length_bytes, seed, secret_length);
 
     int offset = 0;
     while(length > 0) {
         // Next A
         memcpy(temp, A, hash_result_length_bytes);
+        memcpy(temp + hash_result_length_bytes, seed, seed_length);
 
         hmac(hash_function, secret, secret_length, temp, hash_result_length_bytes + seed_length, T, hash_result_length_bytes);
         int a = MIN(length, hash_result_length_bytes);
@@ -94,7 +94,9 @@ void prf12(void(*hash_function)(const char*, int, char*),
     memcpy(label_and_seed, label, label_length);
     memcpy(label_and_seed + label_length, seed, seed_length);
 
-    phash(hash_function, hash_result_length, secret, secret_length, seed, seed_length, result, result_length);
+    phash(hash_function, hash_result_length, secret, secret_length, label_and_seed, label_and_seed_length, result, result_length);
+
+    free(label_and_seed);
 }
 
 // prf10 implements the TLS v1.0 pseudo-random function
