@@ -2,6 +2,10 @@
 #define RAWHTTPS_PROTOCOL_H
 #define RECORD_PROTOCOL_DATA_MAX_SIZE 16384
 
+#define TLS12 0x0303
+#define TLS11 0x0302
+#define TLS10 0x0301
+
 typedef enum {
 	HANDSHAKE_PROTOCOL = 0x16,
 	CHANGE_CIPHER_SPEC_PROTOCOL = 0x14
@@ -13,6 +17,7 @@ typedef enum {
 	SERVER_CERTIFICATE_MESSAGE = 0x0B,
 	SERVER_HELLO_DONE_MESSAGE = 0x0E,
 	CLIENT_KEY_EXCHANGE_MESSAGE = 0x10,
+	FINISHED_MESSAGE = 0x14
 } handshake_message_type;
 
 typedef enum {
@@ -32,7 +37,7 @@ typedef struct {
 
 typedef struct {
 	unsigned short ssl_version;
-	unsigned char* random_number; // 32 bytes
+	unsigned char random_number[32];
 	unsigned char session_id_length;
 	unsigned char* session_id;
 	unsigned short cipher_suites_length;

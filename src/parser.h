@@ -1,6 +1,7 @@
 #ifndef RAWHTTPS_PARSER_H
 #define RAWHTTPS_PARSER_H
 #include "protocol.h"
+#include "util.h"
 typedef struct {
 	unsigned char* buffer;
 	long long buffer_size;
@@ -16,8 +17,15 @@ typedef struct {
 	protocol_type type;
 } rawhttps_parser_state;
 
+typedef struct {
+	int encryption_enabled;
+	unsigned char server_write_key[16];
+	unsigned char server_write_IV[16];
+} rawhttps_parser_crypto_data;
+
 int rawhttps_parser_state_create(rawhttps_parser_state* ps);
 int rawhttps_parser_state_destroy(rawhttps_parser_state* ps);
-int rawhttps_parser_parse_ssl_packet(tls_packet* packet, rawhttps_parser_state* ps, int connected_socket);
+int rawhttps_parser_parse_ssl_packet(rawhttps_parser_crypto_data* cd, tls_packet* packet, rawhttps_parser_state* ps,
+	int connected_socket, dynamic_buffer* handshake_messages);
 
 #endif
