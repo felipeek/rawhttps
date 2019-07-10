@@ -211,7 +211,7 @@ aes_128_cbc_encrypt:
 
     xor rax, rax
 
-    pxor xmm12, xmm12
+	movdqu xmm12, [rdx]
 start_aes_cbc_enc:
     ; Move to xmm0 the block to be encrypted
     movdqu xmm0, [rdi + rax]
@@ -259,7 +259,7 @@ aes_128_cbc_decrypt:
     aesimc xmm10, xmm10
 
     xor rax, rax
-    pxor xmm12, xmm12
+	movdqu xmm12, [rdx]
 start_aes_cbc_dec:
     ; Move to xmm0 the block to be decrypted
     movdqu xmm0, [rdi + rax]

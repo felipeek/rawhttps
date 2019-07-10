@@ -36,7 +36,7 @@ void util_buffer_print_hex(const unsigned char* msg, int size)
 
 	for (long long i = 0; i < size; ++i)
 	{
-		int s = sprintf(aux, "%02hhX ", msg[i]);
+		int s = sprintf(aux, "0x%02hhX, ", msg[i]);
 		util_dynamic_buffer_add(&log_db, aux, s);
 	}
 

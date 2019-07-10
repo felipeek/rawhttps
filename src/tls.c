@@ -207,8 +207,10 @@ static int get_parser_crypto_data(rawhttps_parser_crypto_data* cd, const rawhttp
 	cd->encryption_enabled = ts->encryption_enabled;
 	if (ts->encryption_enabled)
 	{
-		memcpy(cd->server_write_IV, ts->server_write_IV, 16);
-		memcpy(cd->server_write_key, ts->server_write_key, 16);
+		// @TODO: FIX ME
+		// *******************************
+		memcpy(cd->server_write_IV, ts->client_write_IV, 16);
+		memcpy(cd->server_write_key, ts->client_write_key, 16);
 	}
 	return 0;
 }
@@ -250,13 +252,14 @@ int rawhttps_tls_handshake(rawhttps_tls_state* ts, rawhttps_parser_state* ps, in
 						unsigned char* encrypted_pre_master_secret = p.subprotocol.hp.message.ckem.premaster_secret;
 						if (pre_master_secret_decrypt(ts->pre_master_secret, encrypted_pre_master_secret, encrypted_pre_master_secret_length))
 							return -1;
-						printf("Printing premaster secret...");
-						util_buffer_print_hex(encrypted_pre_master_secret, (long long)encrypted_pre_master_secret_length);
-						printf("\n\n");
 
 						unsigned char seed[64];
 						memcpy(seed, ts->client_random_number, 32);
 						memcpy(seed + 32, ts->server_random_number, 32);
+
+						printf("Printing premaster secret...");
+						util_buffer_print_hex(ts->pre_master_secret, (long long)48);
+						printf("\n\n");
 
 						printf("Printing seed...");
 						util_buffer_print_hex(seed, (long long)64);
@@ -271,9 +274,8 @@ int rawhttps_tls_handshake(rawhttps_tls_state* ts, rawhttps_parser_state* ps, in
 						printf("\n\n");
 
 						unsigned char key_block[104];
-						prf12(sha1, 20, (char*)ts->master_secret, 48, "key expansion", sizeof("key expansion") - 1,
+						prf12(sha256, 32, (char*)ts->master_secret, 48, "key expansion", sizeof("key expansion") - 1,
 							(char*)seed, 64, (char*)key_block, 104);
-						
 
 						memcpy(ts->client_write_mac_key, key_block, 20);
 						memcpy(ts->server_write_mac_key, key_block + 20, 20);

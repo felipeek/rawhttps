@@ -195,8 +195,19 @@ static long long rawhttps_get_record_data(rawhttps_parser_buffer* record_buffer,
 		return -1;
 
 	if (cd->encryption_enabled)
+	{
 		// currently we are skipping bytes if record_length % 16 != 0, they will be trash!
+		printf("Record Length: %d\n", record_length);
+		printf("Printing Record:\n");
+		util_buffer_print_hex(ptr, record_length);
+		printf("Printing Server Write Key:\n");
+		util_buffer_print_hex(cd->server_write_key, 16);
+		printf("Printing Server Write IV:\n");
+		util_buffer_print_hex(cd->server_write_key, 16);
 		aes_128_cbc_decrypt(ptr, cd->server_write_key, cd->server_write_IV, record_length / 16, data);
+		printf("Printing Data (%d bytes):\n", record_length / 16);
+		util_buffer_print_hex(data, record_length / 16);
+	}
 	else
 		memcpy(data, ptr, record_length);
 
