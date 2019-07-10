@@ -15,7 +15,6 @@
 #include <unistd.h>
 #include <assert.h>
 #include "aes_cbc.h"
-#include "util.h"
 
 #define RAWHTTP_PARSER_CHUNK_SIZE 1024
 #define RAWHTTP_PARSER_BUFFER_INITIAL_SIZE 1024 // Must be greater than RAWHTTP_PARSER_CHUNK_SIZE
@@ -369,7 +368,8 @@ static int rawhttps_parser_message_parse(tls_packet* packet, rawhttps_parser_sta
 }
 
 // Parses the next SSL packet. The packet is returned via parameter 'packet'
-int rawhttps_parser_parse_ssl_packet(rawhttps_parser_crypto_data* cd, tls_packet* packet, rawhttps_parser_state* ps, int connected_socket)
+int rawhttps_parser_parse_ssl_packet(rawhttps_parser_crypto_data* cd, tls_packet* packet, rawhttps_parser_state* ps,
+	int connected_socket, dynamic_buffer* handshake_messages)
 {
 	// Get Message Data
 	if (rawhttps_parser_message_guarantee_next_message(ps, connected_socket, cd))
@@ -377,6 +377,11 @@ int rawhttps_parser_parse_ssl_packet(rawhttps_parser_crypto_data* cd, tls_packet
 
 	// Parse to TLS Packet
 	packet->type = ps->type;
+
+	// If the packet has type HANDSHAKE_PROTOCOL, before parsing we need to add its content to the handshake_messages buffer
+	// This is needed by the full handshake when the FINISHED message is received.
+	if (packet->type == HANDSHAKE_PROTOCOL)
+		util_dynamic_buffer_add(handshake_messages, ps->message_buffer.buffer, ps->message_buffer.buffer_position_fetch);
 
 	if (rawhttps_parser_message_parse(packet, ps))
 		return -1;

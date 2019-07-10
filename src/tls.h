@@ -19,6 +19,8 @@ typedef struct
 	unsigned char client_write_IV[16];
 	unsigned char server_write_IV[16];
 
+	dynamic_buffer handshake_messages;
+
 	int encryption_enabled;
 } rawhttps_tls_state;
 

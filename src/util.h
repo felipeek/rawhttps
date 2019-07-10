@@ -3,7 +3,7 @@
 #include "common.h"
 
 typedef struct {
-	char* buffer;
+	unsigned char* buffer;
 	long long size;
 	long long capacity;
 } dynamic_buffer;
