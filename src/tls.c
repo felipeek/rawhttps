@@ -231,7 +231,7 @@ int rawhttps_tls_handshake(rawhttps_tls_state* ts, rawhttps_parser_state* ps, in
 				{
 					case CLIENT_HELLO_MESSAGE: {
 						memcpy(ts->client_random_number, p.subprotocol.hp.message.chm.random_number, 32);
-						printf("Printing client random number...");
+						printf("Printing client random number...\n");
 						util_buffer_print_hex(ts->client_random_number, (long long)32);
 						// we received a client hello message
 						// lets send a server hello message
@@ -258,17 +258,22 @@ int rawhttps_tls_handshake(rawhttps_tls_state* ts, rawhttps_parser_state* ps, in
 						memcpy(seed, ts->client_random_number, 32);
 						memcpy(seed + 32, ts->server_random_number, 32);
 
+						printf("Printing seed...");
+						util_buffer_print_hex(seed, (long long)64);
+						printf("\n\n");
+
 						// generate master secret !
 						prf12(sha1, 20, (char*)ts->pre_master_secret, 48, "master secret", sizeof("master secret") - 1,
 							(char*)seed, 64, (char*)ts->master_secret, 48);
+
+						printf("Printing MASTER SECRET...");
+						util_buffer_print_hex(ts->master_secret, 48);
+						printf("\n\n");
 
 						unsigned char key_block[104];
 						prf12(sha1, 20, (char*)ts->master_secret, 48, "key expansion", sizeof("key expansion") - 1,
 							(char*)seed, 64, (char*)key_block, 104);
 						
-						printf("Printing MASTER SECRET...");
-						util_buffer_print_hex(ts->master_secret, 48);
-						printf("\n\n");
 
 						memcpy(ts->client_write_mac_key, key_block, 20);
 						memcpy(ts->server_write_mac_key, key_block + 20, 20);
