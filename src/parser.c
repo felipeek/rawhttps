@@ -206,7 +206,7 @@ static long long rawhttps_get_record_data(rawhttps_parser_buffer* record_buffer,
 	if (rawhttps_parser_get_next_bytes(record_buffer, record_length, &ptr))
 		return -1;
 
-	if (cd->encryption_enabled)
+	if (cd->decryption_enabled)
 	{
 		aes_128_cbc_decrypt(ptr + 16, cd->client_write_key, ptr, record_length / 16 - 1, data);
 		printf("Printing Data [SERVER_WRITE_KEY + SERVER_WRITE_IV] (%d bytes):\n", record_length / 16 - 1);

@@ -28,6 +28,7 @@
 int rawhttps_tls_state_create(rawhttps_tls_state* ts)
 {
 	ts->cd.encryption_enabled = false;
+	ts->cd.decryption_enabled = false;
 	util_dynamic_buffer_new(&ts->handshake_messages, 10 * 1024 /* @TODO: changeme */);
 	return 0;
 }
@@ -403,6 +404,7 @@ int rawhttps_tls_handshake(rawhttps_tls_state* ts, rawhttps_parser_state* ps, in
 						util_buffer_print_hex(ts->handshake_messages.buffer, ts->handshake_messages.size);
 						printf("\n\n\n\n");
 						change_cipher_spec_send(&ts->cd, connected_socket);
+						ts->cd.encryption_enabled = true;
 
 						unsigned char handshake_messages_hash[32];
 						unsigned char verify_data[12];
@@ -429,7 +431,7 @@ int rawhttps_tls_handshake(rawhttps_tls_state* ts, rawhttps_parser_state* ps, in
 				switch (p.subprotocol.ccsp.message) {
 					case CHANGE_CIPHER_SPEC_MESSAGE: {
 						printf("Client asked to activate encryption via CHANGE_CIPHER_SPEC message\n");
-						ts->cd.encryption_enabled = true;
+						ts->cd.decryption_enabled = true;
 					} break;
 				}
 			} break;

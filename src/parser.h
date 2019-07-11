@@ -19,6 +19,7 @@ typedef struct {
 
 typedef struct {
 	int encryption_enabled;
+	int decryption_enabled;
 	unsigned char client_write_mac_key[20];
 	unsigned char server_write_mac_key[20];
 	unsigned char client_write_key[16];
