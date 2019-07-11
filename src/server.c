@@ -42,6 +42,9 @@ int rawhttps_server_init(rawhttps_server* server, int port)
 	option = 1;
 	setsockopt(server->sockfd, IPPROTO_TCP, TCP_NODELAY, &option, sizeof(option));
 
+	int keepalive = 1;
+	setsockopt(server->sockfd, SOL_SOCKET, SO_KEEPALIVE, &keepalive , sizeof(keepalive ));
+
 
 	if (server->sockfd == -1)
 		return -1;
@@ -89,8 +92,8 @@ static void* rawhttps_server_new_connection_callback(void* arg)
 		return NULL;
 	if (rawhttps_tls_handshake(&ts, &ps, connection->connected_socket))
 	{
-		printf("Error in TLS handshake");
-		printf("Connection with client %s will be destroyed", client_ip_ascii);
+		printf("Error in TLS handshake\n");
+		printf("Connection with client %s will be destroyed\n", client_ip_ascii);
 		rawhttps_parser_state_destroy(&ps);
 		return NULL;
 	}

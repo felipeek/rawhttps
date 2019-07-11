@@ -81,12 +81,12 @@ void phash(
 }
 
 // prf12 implements the TLS v1.2 pseudo-random function
-void prf12(void(*hash_function)(const char*, int, char*), 
+void prf12(void(*hash_function)(const unsigned char*, int, unsigned char*), 
     int hash_result_length,
-    const char* secret, int secret_length,
+    const unsigned char* secret, int secret_length,
     const char* label, int label_length,
-    const char* seed, int seed_length,
-    char* result, int result_length) 
+    const unsigned char* seed, int seed_length,
+    unsigned char* result, int result_length) 
 {
     int label_and_seed_length = label_length + seed_length;
     char* label_and_seed = calloc(1, label_and_seed_length);

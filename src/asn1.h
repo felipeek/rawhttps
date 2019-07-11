@@ -54,6 +54,7 @@ typedef struct {
     Cert_Metadata       locality;
     Cert_Metadata       organization;
     Cert_Metadata       email;
+	Base64_Data         raw;
 } RSA_Certificate;
 
 PublicKey  asn1_parse_public_key_from_file(const char* filename, int* error);

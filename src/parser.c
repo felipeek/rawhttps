@@ -191,7 +191,7 @@ static int rawhttps_parser_get_next_bytes(rawhttps_parser_buffer* phb, long long
 
 // gets the data of the next record packet and stores in the received buffer. The type is also returned via 'type'
 static long long rawhttps_get_record_data(rawhttps_parser_buffer* record_buffer, int connected_socket,
-	unsigned char* data, protocol_type* type, rawhttps_parser_crypto_data* cd)
+	unsigned char* data, protocol_type* type, const rawhttps_crypto_data* cd)
 {
 	unsigned char* ptr;
 
@@ -221,7 +221,7 @@ static long long rawhttps_get_record_data(rawhttps_parser_buffer* record_buffer,
 
 // fetches the next record data and stores in the message buffer
 static long long rawhttps_parser_message_fetch_next_record(rawhttps_parser_state* ps, int connected_socket,
-	rawhttps_parser_crypto_data* cd)
+	const rawhttps_crypto_data* cd)
 {
 	long long size_needed = ps->message_buffer.buffer_end + RECORD_PROTOCOL_DATA_MAX_SIZE;
 	if (size_needed > ps->message_buffer.buffer_size)
@@ -244,7 +244,7 @@ static long long rawhttps_parser_message_fetch_next_record(rawhttps_parser_state
 // fetches the next record data and stores it in the message buffer if and only if the message buffer is empty
 // this is useful to force the protocol type to be fetched when the message buffer is empty...
 static int rawhttps_parser_message_fetch_next_record_if_buffer_empty(rawhttps_parser_state* ps, int connected_socket,
-	rawhttps_parser_crypto_data* cd)
+	const rawhttps_crypto_data* cd)
 {
 	while (ps->message_buffer.buffer_end == 0)
 		if (rawhttps_parser_message_fetch_next_record(ps, connected_socket, cd) == -1)
@@ -255,7 +255,7 @@ static int rawhttps_parser_message_fetch_next_record_if_buffer_empty(rawhttps_pa
 
 // guarantees that the next 'num' bytes are available in the message_buffer.
 static int rawhttps_parser_message_guarantee_next_bytes(rawhttps_parser_state* ps, int connected_socket,
-	unsigned char** ptr, long long num, rawhttps_parser_crypto_data* cd)
+	unsigned char** ptr, long long num, const rawhttps_crypto_data* cd)
 {
 	while (ps->message_buffer.buffer_position_fetch + num > ps->message_buffer.buffer_end)
 		if (rawhttps_parser_message_fetch_next_record(ps, connected_socket, cd) == -1)
@@ -268,7 +268,7 @@ static int rawhttps_parser_message_guarantee_next_bytes(rawhttps_parser_state* p
 
 // fetches the next message into the message_buffer
 // this function makes sure that the next message is fully fetched and stored into the message_buffer
-static int rawhttps_parser_message_guarantee_next_message(rawhttps_parser_state* ps, int connected_socket, rawhttps_parser_crypto_data* cd)
+static int rawhttps_parser_message_guarantee_next_message(rawhttps_parser_state* ps, int connected_socket, const rawhttps_crypto_data* cd)
 {
 	unsigned char* ptr;
 	unsigned short message_length;
@@ -288,7 +288,10 @@ static int rawhttps_parser_message_guarantee_next_message(rawhttps_parser_state*
 		} break;
 		case CHANGE_CIPHER_SPEC_PROTOCOL: {
 			// For the change cipher spec protocol, the message length is always 1.
-			message_length = 1; break;
+			message_length = 1;
+		} break;
+		default: {
+			message_length = 0;
 		} break;
 	}
 	
@@ -383,7 +386,7 @@ static int rawhttps_parser_message_parse(tls_packet* packet, rawhttps_parser_sta
 }
 
 // Parses the next SSL packet. The packet is returned via parameter 'packet'
-int rawhttps_parser_parse_ssl_packet(rawhttps_parser_crypto_data* cd, tls_packet* packet, rawhttps_parser_state* ps,
+int rawhttps_parser_parse_ssl_packet(const rawhttps_crypto_data* cd, tls_packet* packet, rawhttps_parser_state* ps,
 	int connected_socket, dynamic_buffer* handshake_messages)
 {
 	// Get Message Data

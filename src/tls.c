@@ -5,6 +5,9 @@
 #include <stdio.h>
 #include <unistd.h>
 #include <sys/uio.h>
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <errno.h>
 #include <memory.h>
 #include <assert.h>
 #include "hobig.h"
@@ -24,7 +27,7 @@
 
 int rawhttps_tls_state_create(rawhttps_tls_state* ts)
 {
-	ts->encryption_enabled = false;
+	ts->cd.encryption_enabled = false;
 	util_dynamic_buffer_new(&ts->handshake_messages, 10 * 1024 /* @TODO: changeme */);
 	return 0;
 }
@@ -48,7 +51,17 @@ static int send_record(const unsigned char* data, int record_size, protocol_type
 	iov[1].iov_base = data;
 	iov[1].iov_len = record_size;
 
-	ssize_t written = writev(connected_socket, iov, 2);
+	struct msghdr hdr = {0};
+	hdr.msg_iov = iov;
+	hdr.msg_iovlen = 2;
+	// MSG_NOSIGNAL to avoid SIGPIPE error
+	ssize_t written = sendmsg(connected_socket, &hdr, MSG_NOSIGNAL);
+
+	if (written < 0)
+	{
+		printf("Error sending record: %s\n", strerror(errno));
+		return -1;
+	}
 
 	// @TODO: in an excepcional case, writev() could write less bytes than requested...
 	// we should look at writev() documentation and decide what to do in this particular case
@@ -60,17 +73,92 @@ static int send_record(const unsigned char* data, int record_size, protocol_type
 }
 
 // receives a higher layer packet, splits the packet into several record packets and send to the client
-static int send_higher_layer_packet(const unsigned char* data, long long size, protocol_type type, int connected_socket)
+static int send_higher_layer_packet(const rawhttps_crypto_data* cd, const unsigned char* data, long long size,
+	protocol_type type, int connected_socket)
 {
 	long long size_remaining = size;
+	unsigned char* record_data = NULL;
+	unsigned long long record_data_length = 0;
+
+	if (cd->encryption_enabled) record_data = calloc(1, RECORD_PROTOCOL_DATA_MAX_SIZE);
+
 	while (size_remaining > 0)
 	{
-		long long size_to_send = MIN(RECORD_PROTOCOL_DATA_MAX_SIZE, size_remaining);
-		long long buffer_position = size - size_remaining;
-		if (send_record(data + buffer_position, size_to_send, type, connected_socket))
+		long long higher_layer_size_to_send = 0;
+		if (cd->encryption_enabled)
+		{
+			const unsigned int IV_SIZE = 16;
+			const unsigned int MAC_SIZE = 20;
+			const unsigned int BLOCK_CIPHER_BLOCK_LENGTH = 16;
+			// The record_data will have:
+			// 16 Bytes for IV
+			// N bytes for the higher layer message (it may have only part of it)
+			// 20 Bytes for the MAC
+			// M bytes for padding
+			// 1 byte for padding length (M)
+			// ---
+			// Padding: Padding that is added to force the length of the plaintext to be
+			// an integral multiple of the block cipher's block length
+			// https://tools.ietf.org/html/rfc5246#section-6.2.3.2
+			record_data_length = IV_SIZE + MAC_SIZE + 1; // +1 for padding_length
+			higher_layer_size_to_send = MIN(RECORD_PROTOCOL_DATA_MAX_SIZE - record_data_length, size_remaining);
+			record_data_length += higher_layer_size_to_send;
+			unsigned char padding_length = BLOCK_CIPHER_BLOCK_LENGTH - ((record_data_length - IV_SIZE) % BLOCK_CIPHER_BLOCK_LENGTH);
+			record_data_length += padding_length;
+			// we assume that RECORD_PROTOCOL_DATA_MAX_SIZE - IV_SIZE is divisible by the block cipher's block length
+			// if it's not visibile, this code should be fixed
+			assert(record_data_length <= RECORD_PROTOCOL_DATA_MAX_SIZE);
+
+			// Calculate IV
+			// For now, we are using the Server Write IV as the CBC IV for all packets
+			// This must be random and new for each packet
+			// TODO
+			const unsigned char* IV = cd->server_write_IV;
+
+			// Calculate MAC
+			// TODO
+			unsigned char mac[20] = {0};
+
+			unsigned char* record_data_ptr = record_data;
+			memcpy(record_data_ptr, IV, IV_SIZE);
+			record_data_ptr += IV_SIZE;
+			long long buffer_position = size - size_remaining;
+			memcpy(record_data_ptr, data + buffer_position, higher_layer_size_to_send);
+			record_data_ptr += higher_layer_size_to_send;
+			memcpy(record_data_ptr, mac, MAC_SIZE);
+			record_data_ptr += MAC_SIZE;
+			for (int i = 0; i < padding_length; ++i)
+				record_data_ptr[i] = padding_length;
+			record_data_ptr += padding_length;
+			record_data_ptr[0] = padding_length;
+
+			// Encrypt data
+			unsigned char* data_to_encrypt = record_data + IV_SIZE; // Skip IV! We don't want to encrypt the IV
+			unsigned int data_to_encrypt_size = record_data_length - IV_SIZE;
+			assert(data_to_encrypt_size % BLOCK_CIPHER_BLOCK_LENGTH == 0);
+			unsigned char* result = calloc(1, data_to_encrypt_size);
+			aes_128_cbc_encrypt(data_to_encrypt, cd->server_write_key, IV, data_to_encrypt_size / BLOCK_CIPHER_BLOCK_LENGTH, result);
+			memcpy(data_to_encrypt, result, data_to_encrypt_size);
+		}
+		else
+		{
+			higher_layer_size_to_send = MIN(RECORD_PROTOCOL_DATA_MAX_SIZE, size_remaining);
+			long long buffer_position = size - size_remaining;
+			record_data = data + buffer_position;
+			record_data_length = higher_layer_size_to_send;
+		}
+
+		// Send record packet
+		if (send_record(record_data, record_data_length, type, connected_socket))
+		{
+			if (cd->encryption_enabled) free(record_data);
 			return -1;
-		size_remaining -= size_to_send;
+		}
+
+		size_remaining -= higher_layer_size_to_send;
 	}
+
+	if (cd->encryption_enabled) free(record_data);
 
 	return 0;
 }
@@ -85,7 +173,7 @@ static void server_hello_random_number_generate(unsigned char* random_number)
 }
 
 // send to the client a new HANDSHAKE packet, with message type SERVER_HELLO
-static int rawhttp_handshake_server_hello_message_send(int connected_socket, unsigned short selected_cipher_suite,
+static int handshake_server_hello_message_send(const rawhttps_crypto_data* cd, int connected_socket, unsigned short selected_cipher_suite,
 	unsigned char* random_number, dynamic_buffer* handshake_messages)
 {
 	dynamic_buffer db;
@@ -117,7 +205,7 @@ static int rawhttp_handshake_server_hello_message_send(int connected_socket, uns
 	// We could even use the same dynamic buffer here...
 	util_dynamic_buffer_add(handshake_messages, db.buffer, db.size);
 
-	if (send_higher_layer_packet(db.buffer, db.size, HANDSHAKE_PROTOCOL, connected_socket))
+	if (send_higher_layer_packet(cd, db.buffer, db.size, HANDSHAKE_PROTOCOL, connected_socket))
 		return -1;
 
 	util_dynamic_buffer_free(&db);
@@ -127,8 +215,8 @@ static int rawhttp_handshake_server_hello_message_send(int connected_socket, uns
 // send to the client a new HANDSHAKE packet, with message type SERVER_CERTIFICATE
 // for now, this function receives a single certificate!
 // @todo: support a chain of certificates
-static int rawhttp_handshake_server_certificate_message_send(int connected_socket, unsigned char* certificate,
-	int certificate_size, dynamic_buffer* handshake_messages)
+static int handshake_server_certificate_message_send(const rawhttps_crypto_data* cd, int connected_socket,
+	unsigned char* certificate, int certificate_size, dynamic_buffer* handshake_messages)
 {
 	dynamic_buffer db;
 	util_dynamic_buffer_new(&db, 1024);
@@ -161,7 +249,7 @@ static int rawhttp_handshake_server_certificate_message_send(int connected_socke
 	// We could even use the same dynamic buffer here...
 	util_dynamic_buffer_add(handshake_messages, db.buffer, db.size);
 
-	if (send_higher_layer_packet(db.buffer, db.size, HANDSHAKE_PROTOCOL, connected_socket))
+	if (send_higher_layer_packet(cd, db.buffer, db.size, HANDSHAKE_PROTOCOL, connected_socket))
 		return -1;
 
 	util_dynamic_buffer_free(&db);
@@ -169,7 +257,7 @@ static int rawhttp_handshake_server_certificate_message_send(int connected_socke
 }
 
 // send to the client a new HANDSHAKE packet, with message type SERVER_HELLO_DONE
-static int rawhttp_handshake_server_hello_done_message_send(int connected_socket, dynamic_buffer* handshake_messages)
+static int handshake_server_hello_done_message_send(const rawhttps_crypto_data* cd, int connected_socket, dynamic_buffer* handshake_messages)
 {
 	dynamic_buffer db;
 	util_dynamic_buffer_new(&db, 1024);
@@ -183,7 +271,7 @@ static int rawhttp_handshake_server_hello_done_message_send(int connected_socket
 	// We could even use the same dynamic buffer here...
 	util_dynamic_buffer_add(handshake_messages, db.buffer, db.size);
 
-	if (send_higher_layer_packet(db.buffer, db.size, HANDSHAKE_PROTOCOL, connected_socket))
+	if (send_higher_layer_packet(cd, db.buffer, db.size, HANDSHAKE_PROTOCOL, connected_socket))
 		return -1;
 
 	util_dynamic_buffer_free(&db);
@@ -191,18 +279,18 @@ static int rawhttp_handshake_server_hello_done_message_send(int connected_socket
 }
 
 // send to the client a new CHANGE_CIPHER_SPEC message
-static int rawhttp_change_cipher_spec_send(int connected_socket)
+static int change_cipher_spec_send(const rawhttps_crypto_data* cd, int connected_socket)
 {
 	unsigned char ccs_type = CHANGE_CIPHER_SPEC_MESSAGE;
 
-	if (send_higher_layer_packet((const unsigned char*)&ccs_type, sizeof(ccs_type), CHANGE_CIPHER_SPEC_PROTOCOL, connected_socket))
+	if (send_higher_layer_packet(cd, (const unsigned char*)&ccs_type, sizeof(ccs_type), CHANGE_CIPHER_SPEC_PROTOCOL, connected_socket))
 		return -1;
 
 	return 0;
 }
 
 // send to the client a new CHANGE_CIPHER_SPEC message
-static int rawhttp_handshake_finished_message_send(int connected_socket, unsigned char verify_data[12])
+static int handshake_finished_message_send(const rawhttps_crypto_data* cd, int connected_socket, unsigned char verify_data[12])
 {
 	dynamic_buffer db;
 	util_dynamic_buffer_new(&db, 16);
@@ -214,7 +302,7 @@ static int rawhttp_handshake_finished_message_send(int connected_socket, unsigne
 	util_dynamic_buffer_add(&db, &message_length_be, 3);					// Message Length (3 Bytes)
 	util_dynamic_buffer_add(&db, verify_data, 12);							// Verify Data (12 Bytes)
 
-	if (send_higher_layer_packet(db.buffer, db.size, HANDSHAKE_PROTOCOL, connected_socket))
+	if (send_higher_layer_packet(cd, db.buffer, db.size, HANDSHAKE_PROTOCOL, connected_socket))
 		return -1;
 
 	return 0;
@@ -223,7 +311,7 @@ static int rawhttp_handshake_finished_message_send(int connected_socket, unsigne
 static int pre_master_secret_decrypt(unsigned char* result, unsigned char* encrypted, int length)
 {
 	int err = 0;
-	PrivateKey pk = asn1_parse_pem_private_key_from_file("./certificate/key_decrypted.pem", &err);
+	PrivateKey pk = asn1_parse_pem_private_key_from_file("./certificate/new_cert/key.pem", &err);
 	if (err) return -1;
 	HoBigInt encrypted_big_int = hobig_int_new_from_memory((char*)encrypted, length);
 	Decrypt_Data dd = decrypt_pkcs1_v1_5(pk, encrypted_big_int, &err);
@@ -233,33 +321,13 @@ static int pre_master_secret_decrypt(unsigned char* result, unsigned char* encry
 	return 0;
 }
 
-static int get_parser_crypto_data(rawhttps_parser_crypto_data* cd, const rawhttps_tls_state* ts)
-{
-	cd->encryption_enabled = ts->encryption_enabled;
-	if (ts->encryption_enabled)
-	{
-		// @TODO: FIX ME
-		// *******************************
-		memcpy(cd->server_write_IV, ts->server_write_IV, 16);
-		memcpy(cd->server_write_key, ts->server_write_key, 16);
-		memcpy(cd->server_write_mac_key, ts->server_write_mac_key, 20);
-		memcpy(cd->client_write_IV, ts->client_write_IV, 16);
-		memcpy(cd->client_write_key, ts->client_write_key, 16);
-		memcpy(cd->client_write_mac_key, ts->client_write_mac_key, 20);
-	}
-	return 0;
-}
-
 // performs the TLS handshake
 int rawhttps_tls_handshake(rawhttps_tls_state* ts, rawhttps_parser_state* ps, int connected_socket)
 {
-	rawhttps_parser_crypto_data cd;
 	tls_packet p;
 	while (1)
 	{
-		if (get_parser_crypto_data(&cd, ts))
-			return -1;
-		if (rawhttps_parser_parse_ssl_packet(&cd, &p, ps, connected_socket, &ts->handshake_messages))
+		if (rawhttps_parser_parse_ssl_packet(&ts->cd, &p, ps, connected_socket, &ts->handshake_messages))
 			return -1;
 		switch (p.type)
 		{
@@ -275,12 +343,19 @@ int rawhttps_tls_handshake(rawhttps_tls_state* ts, rawhttps_parser_state* ps, in
 						//unsigned short selected_cipher_suite = 0x0035; // TLS_RSA_WITH_AES_256_CBC_SHA
 						unsigned short selected_cipher_suite = 0x002f; // TLS_RSA_WITH_AES_128_CBC_SHA
 						server_hello_random_number_generate(ts->server_random_number);
-						rawhttp_handshake_server_hello_message_send(connected_socket, selected_cipher_suite, ts->server_random_number, &ts->handshake_messages);
+						handshake_server_hello_message_send(&ts->cd, connected_socket, selected_cipher_suite,
+							ts->server_random_number, &ts->handshake_messages);
 						int cert_size;
-						unsigned char* cert = util_file_to_memory("./certificate/cert_binary", &cert_size);
-						rawhttp_handshake_server_certificate_message_send(connected_socket, cert, cert_size, &ts->handshake_messages);
-						free(cert);
-						rawhttp_handshake_server_hello_done_message_send(connected_socket, &ts->handshake_messages);
+						unsigned char* cert = util_file_to_memory("./certificate/new_cert/cert.bin", &cert_size);
+						//int err = 0;
+						//RSA_Certificate cert = asn1_parse_pem_certificate_from_file("./certificate/new_cert/cert.pem", &err);
+						//if (err)
+						//{
+						//	printf("Fatal error parsing certificate!\n");
+						//	return -1;
+						//}
+						handshake_server_certificate_message_send(&ts->cd, connected_socket, cert, cert_size, &ts->handshake_messages);
+						handshake_server_hello_done_message_send(&ts->cd, connected_socket, &ts->handshake_messages);
 					} break;
 					case CLIENT_KEY_EXCHANGE_MESSAGE: {
 						unsigned int encrypted_pre_master_secret_length = p.subprotocol.hp.message.ckem.premaster_secret_length;
@@ -301,8 +376,8 @@ int rawhttps_tls_handshake(rawhttps_tls_state* ts, rawhttps_parser_state* ps, in
 						printf("\n\n");
 
 						// generate master secret !
-						prf12(sha256, 32, (char*)ts->pre_master_secret, 48, "master secret", sizeof("master secret") - 1,
-							(char*)seed, 64, (char*)ts->master_secret, 48);
+						prf12(sha256, 32, ts->pre_master_secret, 48, "master secret", sizeof("master secret") - 1,
+							seed, 64, ts->master_secret, 48);
 
 						printf("Printing MASTER SECRET...");
 						util_buffer_print_hex(ts->master_secret, 48);
@@ -312,24 +387,22 @@ int rawhttps_tls_handshake(rawhttps_tls_state* ts, rawhttps_parser_state* ps, in
 						memcpy(seed + 32, ts->client_random_number, 32);
 
 						unsigned char key_block[104];
-						prf12(sha256, 32, (char*)ts->master_secret, 48, "key expansion", sizeof("key expansion") - 1,
-							(char*)seed, 64, (char*)key_block, 104);
+						prf12(sha256, 32, ts->master_secret, 48, "key expansion", sizeof("key expansion") - 1,
+							seed, 64, key_block, 104);
 
-						memcpy(ts->client_write_mac_key, key_block, 20);
-						memcpy(ts->server_write_mac_key, key_block + 20, 20);
-						memcpy(ts->client_write_key, key_block + 20 + 20, 16);
-						memcpy(ts->server_write_key, key_block + 20 + 20 + 16, 16);
-						memcpy(ts->client_write_IV, key_block + 20 + 20 + 16 + 16, 16);
-						memcpy(ts->server_write_IV, key_block + 20 + 20 + 16 + 16 + 16, 16);
+						memcpy(ts->cd.client_write_mac_key, key_block, 20);
+						memcpy(ts->cd.server_write_mac_key, key_block + 20, 20);
+						memcpy(ts->cd.client_write_key, key_block + 20 + 20, 16);
+						memcpy(ts->cd.server_write_key, key_block + 20 + 20 + 16, 16);
+						memcpy(ts->cd.client_write_IV, key_block + 20 + 20 + 16 + 16, 16);
+						memcpy(ts->cd.server_write_IV, key_block + 20 + 20 + 16 + 16 + 16, 16);
 					} break;
 					case FINISHED_MESSAGE: {
 						// Here we need to check if the decryption worked!
 						printf("PRINTING HANDSHAKE MESSAGES WITH SIZE %lld ...\n\n\n\n", ts->handshake_messages.size);
 						util_buffer_print_hex(ts->handshake_messages.buffer, ts->handshake_messages.size);
 						printf("\n\n\n\n");
-						rawhttp_change_cipher_spec_send(connected_socket);
-						printf("sent ciperhsec");
-						getchar();
+						change_cipher_spec_send(&ts->cd, connected_socket);
 
 						unsigned char handshake_messages_hash[32];
 						unsigned char verify_data[12];
@@ -338,15 +411,11 @@ int rawhttps_tls_handshake(rawhttps_tls_state* ts, rawhttps_parser_state* ps, in
 						prf12(sha256, 32, ts->master_secret, 48, "server finished", sizeof("server finished") - 1,
 							handshake_messages_hash, 32, verify_data, 12);
 						
-						unsigned char message[48];
-						aes_128_cbc_encrypt(verify_data, ts->server_write_key, ts->server_write_IV, 48 / 16, message);
-
-						unsigned char seq_num[8] = {0};
-
 						// Chamar prf12 com SHA256 para gerar o MAC no final do Record usando mac_write_key
 						// O tamanho desse MAC deve ser considerado no campo do record_length
 						// Mas Não é considerado no campo do message_length (high-level protocol)
 						// Sepá tem que concatenar o IV no pacote
+						handshake_finished_message_send(&ts->cd, connected_socket, verify_data);
 					} break;
 					case SERVER_HELLO_MESSAGE:
 					case SERVER_CERTIFICATE_MESSAGE:
@@ -360,7 +429,7 @@ int rawhttps_tls_handshake(rawhttps_tls_state* ts, rawhttps_parser_state* ps, in
 				switch (p.subprotocol.ccsp.message) {
 					case CHANGE_CIPHER_SPEC_MESSAGE: {
 						printf("Client asked to activate encryption via CHANGE_CIPHER_SPEC message\n");
-						ts->encryption_enabled = true;
+						ts->cd.encryption_enabled = true;
 					} break;
 				}
 			} break;

@@ -12,16 +12,8 @@ typedef struct
 	unsigned char pre_master_secret[48];
 	unsigned char master_secret[48];
 
-	unsigned char client_write_mac_key[20];
-	unsigned char server_write_mac_key[20];
-	unsigned char client_write_key[16];
-	unsigned char server_write_key[16];
-	unsigned char client_write_IV[16];
-	unsigned char server_write_IV[16];
-
+	rawhttps_crypto_data cd;
 	dynamic_buffer handshake_messages;
-
-	int encryption_enabled;
 } rawhttps_tls_state;
 
 int rawhttps_tls_state_create(rawhttps_tls_state* ts);

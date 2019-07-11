@@ -690,6 +690,7 @@ asn1_parse_pem_certificate(const u8* data, int length, int* error, int is_base64
     DER_Node* node = parse_der(arena, (u8*)r.data, r.length, error);
 
     RSA_Certificate certificate = {0};
+	certificate.raw = r;
 
     DER_Node* at = node;
     if(node->kind != DER_SEQUENCE) {
@@ -763,6 +764,7 @@ asn1_parse_pem_certificate(const u8* data, int length, int* error, int is_base64
             } break;
         }
     }
+
     return certificate;
 }
 

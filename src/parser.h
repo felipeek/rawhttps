@@ -25,11 +25,11 @@ typedef struct {
 	unsigned char server_write_key[16];
 	unsigned char client_write_IV[16];
 	unsigned char server_write_IV[16];
-} rawhttps_parser_crypto_data;
+} rawhttps_crypto_data;
 
 int rawhttps_parser_state_create(rawhttps_parser_state* ps);
 int rawhttps_parser_state_destroy(rawhttps_parser_state* ps);
-int rawhttps_parser_parse_ssl_packet(rawhttps_parser_crypto_data* cd, tls_packet* packet, rawhttps_parser_state* ps,
+int rawhttps_parser_parse_ssl_packet(const rawhttps_crypto_data* cd, tls_packet* packet, rawhttps_parser_state* ps,
 	int connected_socket, dynamic_buffer* handshake_messages);
 
 #endif

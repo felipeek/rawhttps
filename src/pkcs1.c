@@ -18,12 +18,12 @@ extern u64 random_integer(u64 min, u64 max);
 Decrypt_Data
 decrypt_pkcs1_v1_5(PrivateKey pk, HoBigInt encrypted, int* error) {
     HoBigInt decr = hobig_int_mod_div(&encrypted, &pk.PrivateExponent, &pk.public.N);
-    if(array_length(decr.value) % 32 != 0) {
-        // error, encrypted message does not contain 2048 bits
-        fprintf(stderr, "Encrypted message must contain 2048 or 4096 bits\n");
-        if(error) *error |= 1;
-        return (Decrypt_Data){0};
-    }
+   // if(array_length(decr.value) % 32 != 0) {
+   //     // error, encrypted message does not contain 2048 bits
+   //     fprintf(stderr, "Encrypted message must contain 2048 or 4096 bits (length = %d)\n", array_length(decr.value));
+   //     if(error) *error |= 1;
+   //     return (Decrypt_Data){0};
+   // }
 
     if(((decr.value[array_length(decr.value) - 1] & 0xffff000000000000) >> 48) != 0x0002) {
         // format invalid, but do not accuse error to not be
