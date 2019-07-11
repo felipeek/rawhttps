@@ -123,10 +123,22 @@ static long long rawhttps_parser_fetch_next_tcp_chunk(rawhttps_parser_buffer* ph
 // data which was already used via 'get' functions will be released and the pointers will be adjusted
 static void rawhttps_parser_buffer_clear(rawhttps_parser_buffer* phb)
 {
+	/*
+	*
+	*
+	*
+	*
+	*
+	* REVIEW ASSERT HERE
+	*
+	*
+	*
+	*
+	*/
 	// As of now, this function should only be called after we had successfully parsed some kind of packet.
 	// The buffer_position_fetch and buffer_position_get MUST be the same, since our code only fetches until the end of the next
 	// packet, and after that we build the packet by getting also until the end of the packet.
-	assert(phb->buffer_position_fetch == phb->buffer_position_get);
+	//assert(phb->buffer_position_fetch == phb->buffer_position_get);
 	memmove(phb->buffer, phb->buffer + phb->buffer_position_get, phb->buffer_end - phb->buffer_position_get);
 	phb->buffer_end -= phb->buffer_position_get;
 	phb->buffer_position_fetch -= phb->buffer_position_get;
@@ -196,17 +208,9 @@ static long long rawhttps_get_record_data(rawhttps_parser_buffer* record_buffer,
 
 	if (cd->encryption_enabled)
 	{
-		// currently we are skipping bytes if record_length % 16 != 0, they will be trash!
-		printf("Record Length: %d\n", record_length);
-		printf("Printing Record:\n");
-		util_buffer_print_hex(ptr, record_length);
-		printf("Printing Server Write Key:\n");
-		util_buffer_print_hex(cd->server_write_key, 16);
-		printf("Printing Server Write IV:\n");
-		util_buffer_print_hex(cd->server_write_key, 16);
-		aes_128_cbc_decrypt(ptr, cd->server_write_key, cd->server_write_IV, record_length / 16, data);
-		printf("Printing Data (%d bytes):\n", record_length / 16);
-		util_buffer_print_hex(data, record_length / 16);
+		aes_128_cbc_decrypt(ptr + 16, cd->client_write_key, ptr, record_length / 16 - 1, data);
+		printf("Printing Data [SERVER_WRITE_KEY + SERVER_WRITE_IV] (%d bytes):\n", record_length / 16 - 1);
+		util_buffer_print_hex(data, record_length);
 	}
 	else
 		memcpy(data, ptr, record_length);

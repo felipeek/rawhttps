@@ -13,6 +13,7 @@
 #include "hmac.h"
 #include "common.h"
 #include "crypto_hashes.h"
+#include "aes_cbc.h"
 
 #define MIN(a,b) (((a) < (b)) ? (a) : (b))
 #define BIG_ENDIAN_16(x) ((((x) & 0xFF00) >> 8) | (((x) & 0x00FF) << 8))
@@ -189,6 +190,36 @@ static int rawhttp_handshake_server_hello_done_message_send(int connected_socket
 	return 0;
 }
 
+// send to the client a new CHANGE_CIPHER_SPEC message
+static int rawhttp_change_cipher_spec_send(int connected_socket)
+{
+	unsigned char ccs_type = CHANGE_CIPHER_SPEC_MESSAGE;
+
+	if (send_higher_layer_packet((const unsigned char*)&ccs_type, sizeof(ccs_type), CHANGE_CIPHER_SPEC_PROTOCOL, connected_socket))
+		return -1;
+
+	return 0;
+}
+
+// send to the client a new CHANGE_CIPHER_SPEC message
+static int rawhttp_handshake_finished_message_send(int connected_socket, unsigned char verify_data[12])
+{
+	dynamic_buffer db;
+	util_dynamic_buffer_new(&db, 16);
+
+	unsigned char message_type = FINISHED_MESSAGE;
+	unsigned int message_length_be = BIG_ENDIAN_24(12);
+
+	util_dynamic_buffer_add(&db, &message_type, 1);							// Message Type (1 Byte)
+	util_dynamic_buffer_add(&db, &message_length_be, 3);					// Message Length (3 Bytes)
+	util_dynamic_buffer_add(&db, verify_data, 12);							// Verify Data (12 Bytes)
+
+	if (send_higher_layer_packet(db.buffer, db.size, HANDSHAKE_PROTOCOL, connected_socket))
+		return -1;
+
+	return 0;
+}
+
 static int pre_master_secret_decrypt(unsigned char* result, unsigned char* encrypted, int length)
 {
 	int err = 0;
@@ -209,8 +240,12 @@ static int get_parser_crypto_data(rawhttps_parser_crypto_data* cd, const rawhttp
 	{
 		// @TODO: FIX ME
 		// *******************************
-		memcpy(cd->server_write_IV, ts->client_write_IV, 16);
-		memcpy(cd->server_write_key, ts->client_write_key, 16);
+		memcpy(cd->server_write_IV, ts->server_write_IV, 16);
+		memcpy(cd->server_write_key, ts->server_write_key, 16);
+		memcpy(cd->server_write_mac_key, ts->server_write_mac_key, 20);
+		memcpy(cd->client_write_IV, ts->client_write_IV, 16);
+		memcpy(cd->client_write_key, ts->client_write_key, 16);
+		memcpy(cd->client_write_mac_key, ts->client_write_mac_key, 20);
 	}
 	return 0;
 }
@@ -266,12 +301,15 @@ int rawhttps_tls_handshake(rawhttps_tls_state* ts, rawhttps_parser_state* ps, in
 						printf("\n\n");
 
 						// generate master secret !
-						prf12(sha1, 20, (char*)ts->pre_master_secret, 48, "master secret", sizeof("master secret") - 1,
+						prf12(sha256, 32, (char*)ts->pre_master_secret, 48, "master secret", sizeof("master secret") - 1,
 							(char*)seed, 64, (char*)ts->master_secret, 48);
 
 						printf("Printing MASTER SECRET...");
 						util_buffer_print_hex(ts->master_secret, 48);
 						printf("\n\n");
+
+						memcpy(seed, ts->server_random_number, 32);
+						memcpy(seed + 32, ts->client_random_number, 32);
 
 						unsigned char key_block[104];
 						prf12(sha256, 32, (char*)ts->master_secret, 48, "key expansion", sizeof("key expansion") - 1,
@@ -289,6 +327,26 @@ int rawhttps_tls_handshake(rawhttps_tls_state* ts, rawhttps_parser_state* ps, in
 						printf("PRINTING HANDSHAKE MESSAGES WITH SIZE %lld ...\n\n\n\n", ts->handshake_messages.size);
 						util_buffer_print_hex(ts->handshake_messages.buffer, ts->handshake_messages.size);
 						printf("\n\n\n\n");
+						rawhttp_change_cipher_spec_send(connected_socket);
+						printf("sent ciperhsec");
+						getchar();
+
+						unsigned char handshake_messages_hash[32];
+						unsigned char verify_data[12];
+						sha256(ts->handshake_messages.buffer, ts->handshake_messages.size, handshake_messages_hash);
+
+						prf12(sha256, 32, ts->master_secret, 48, "server finished", sizeof("server finished") - 1,
+							handshake_messages_hash, 32, verify_data, 12);
+						
+						unsigned char message[48];
+						aes_128_cbc_encrypt(verify_data, ts->server_write_key, ts->server_write_IV, 48 / 16, message);
+
+						unsigned char seq_num[8] = {0};
+
+						// Chamar prf12 com SHA256 para gerar o MAC no final do Record usando mac_write_key
+						// O tamanho desse MAC deve ser considerado no campo do record_length
+						// Mas Não é considerado no campo do message_length (high-level protocol)
+						// Sepá tem que concatenar o IV no pacote
 					} break;
 					case SERVER_HELLO_MESSAGE:
 					case SERVER_CERTIFICATE_MESSAGE:
