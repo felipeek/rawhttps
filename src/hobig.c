@@ -636,51 +636,40 @@ hobig_int_div(HoBigInt* dividend, HoBigInt* divisor) {
 
 HoBigInt
 hobig_int_mod_div(HoBigInt* n, HoBigInt* exp, HoBigInt* m) {
-    TIME_COUNT();
-    // Holds the final sum of mods of the powers of 2
-    // i.e. 5^117 mod 19
-    // final = (5^1 mod 19) * (5^4 mod 19) * (5^16 mod 19) * (5^32 mod 19) * (5^64 mod 19) = 61200
-    HoBigInt final = hobig_int_new(1);
+    HoBigInt answer = hobig_int_new(1);
+    HoBigInt two = hobig_int_new(2);
 
-    // Calculate the first modulo n^1 mod m
-    HoBigInt_DivResult powers = hobig_int_div(n, m);
+    HoBigInt_DivResult r = hobig_int_div(n, m);
+    HoBigInt base = r.remainder;
+    hobig_free(r.quotient);
 
-    // For each power of 2 execute
-    for(int k = 0; k < array_length(exp->value); ++k) {
-        u64 v = exp->value[k];
-        for(int i = 0; i < sizeof(*exp->value) * 8; ++i) {
-            int bit = (v >> i) & 1;
+    HoBigInt e = hobig_int_copy(*exp);
 
-            if(bit) {
-                // Sum the power of 2 result to the final 
-                // result when the bit is set
-                hobig_int_mul(&final, &powers.remainder);
+    int i = 0;
+	while (e.value[0] > 0) {
+		if ((e.value[0] & 1) == 1) {
+            hobig_int_mul(&answer, &base);
+            HoBigInt_DivResult r = hobig_int_div(&answer, m);
+            hobig_free(answer);
+            hobig_free(r.quotient);
+			answer = r.remainder;
+		}
 
-				HoBigInt_DivResult accumulated = hobig_int_div(&final, m);
-				hobig_free(final);
-				hobig_free(accumulated.quotient);
-				final = accumulated.remainder;
+        // TODO(psv): better div by 2
+        HoBigInt_DivResult dr = hobig_int_div(&e, &two);
+        hobig_free(e);
+        hobig_free(dr.remainder);
+        e = dr.quotient;
 
-            }            
-            hobig_int_mul(&powers.remainder, &powers.remainder);
+        hobig_int_mul(&base, &base);
 
-            HoBigInt_DivResult ps = hobig_int_div(&powers.remainder, m);
+        HoBigInt_DivResult bb = hobig_int_div(&base, m);
+        hobig_free(bb.quotient);
+        hobig_free(base);
+        base = bb.remainder;
+	}
 
-            hobig_free(powers.quotient);
-            hobig_free(powers.remainder);
-            powers = ps;
-        }
-    }
-    hobig_free(powers.quotient);
-    hobig_free(powers.remainder);
-
-    // Calculate the final modulo final mod m (in the example 61200 mod 19)
-    HoBigInt_DivResult result = hobig_int_div(&final, m);
-    hobig_free(result.quotient);
-    hobig_free(final);
-
-    TIME_END(TIME_SLOT_MOD_DIV);
-    return result.remainder;
+    return answer;
 }
 
 // Use the euclidean algorithm to calculate GCD(a, b) (Greatest common divisor).
