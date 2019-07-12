@@ -206,17 +206,23 @@ static long long rawhttps_get_record_data(rawhttps_parser_buffer* record_buffer,
 	if (rawhttps_parser_get_next_bytes(record_buffer, record_length, &ptr))
 		return -1;
 
+	long long content_length = 0;
 	if (cd->decryption_enabled)
 	{
 		aes_128_cbc_decrypt(ptr + 16, cd->client_write_key, ptr, record_length / 16 - 1, data);
 		printf("Printing Data [SERVER_WRITE_KEY + SERVER_WRITE_IV] (%d bytes):\n", record_length / 16 - 1);
 		util_buffer_print_hex(data, record_length);
+		unsigned char padding_length = data[record_length - 16 - 1];
+		content_length = record_length - 16 - 20 - padding_length - 1;
 	}
 	else
+	{
 		memcpy(data, ptr, record_length);
+		content_length = record_length;
+	}
 
 	rawhttps_parser_buffer_clear(record_buffer);
-	return record_length;
+	return content_length;
 }
 
 // fetches the next record data and stores in the message buffer
@@ -289,6 +295,12 @@ static int rawhttps_parser_message_guarantee_next_message(rawhttps_parser_state*
 		case CHANGE_CIPHER_SPEC_PROTOCOL: {
 			// For the change cipher spec protocol, the message length is always 1.
 			message_length = 1;
+		} break;
+		case APPLICATION_DATA_PROTOCOL: {
+			if (rawhttps_parser_message_guarantee_next_bytes(ps, connected_socket, &ptr, 30, cd))
+				return -1;
+			printf("PACKET:\n\n\n\n%.*s\n\n\n", 326, ptr);
+			message_length = 0;
 		} break;
 		default: {
 			message_length = 0;
@@ -364,7 +376,11 @@ static int rawhttps_parser_message_parse(tls_packet* packet, rawhttps_parser_sta
 				case SERVER_HELLO_DONE_MESSAGE:
 				case SERVER_HELLO_MESSAGE: {
 					return -1;
-				}
+				} break;
+				case FINISHED_MESSAGE: {
+					// TODO
+					if (rawhttps_parser_get_next_bytes(&ps->message_buffer, 12, &ptr)) return -1;
+				} break;
 			}
 
 			packet->subprotocol.hp = hp;
@@ -377,6 +393,9 @@ static int rawhttps_parser_message_parse(tls_packet* packet, rawhttps_parser_sta
 			if (rawhttps_parser_get_next_bytes(&ps->message_buffer, 1, &ptr)) return -1;
 			ccsp.message = *ptr;
 			packet->subprotocol.ccsp = ccsp;
+		} break;
+		case APPLICATION_DATA_PROTOCOL: {
+
 		} break;
 	}
 	

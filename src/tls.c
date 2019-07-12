@@ -24,6 +24,14 @@
 // 01 02 03 04 05 06 00 00 is transformed to 05 06 03 04 01 02 00 00
 #define BIG_ENDIAN_24(x) ((((x) & 0x000000FF) << 16) | (((x) & 0x00FF0000) >> 16) | ((x) & 0x0000FF00))
 #define BIG_ENDIAN_32(x) ((((x) & 0xFF000000) >> 24) | (((x) & 0x00FF0000) >> 8) | (((x) & 0x0000FF00) << 8) | (((x) & 0x000000FF) << 24))
+#define BIG_ENDIAN_64(X) ((((X) & 0xff00000000000000) >> 56) | \
+    (((X) & 0xff000000000000) >> 40) | \
+    (((X) & 0xff0000000000) >> 24) | \
+    (((X) & 0xff00000000) >> 8) | \
+    (((X) & 0xff000000) << 8) | \
+    (((X) & 0xff0000) << 24) | \
+    (((X) & 0xff00) << 40) | \
+    (((X) & 0xff) << 56))
 
 int rawhttps_tls_state_create(rawhttps_tls_state* ts)
 {
@@ -123,7 +131,8 @@ static int send_higher_layer_packet(const rawhttps_crypto_data* cd, const unsign
 			unsigned char mac[20] = {0};
 			dynamic_buffer mac_message;
 			util_dynamic_buffer_new(&mac_message, 1024);
-			util_dynamic_buffer_add(&mac_message, cd->seq_number, 8);
+			unsigned long long seq_number_be = BIG_ENDIAN_64(cd->seq_number);
+			util_dynamic_buffer_add(&mac_message, &seq_number_be, 8);
 			unsigned char mac_tls_type = type;
 			unsigned short mac_tls_version = BIG_ENDIAN_16(TLS12);
 			unsigned short mac_tls_length = BIG_ENDIAN_16(higher_layer_size_to_send);
@@ -154,6 +163,8 @@ static int send_higher_layer_packet(const rawhttps_crypto_data* cd, const unsign
 			unsigned char* result = calloc(1, data_to_encrypt_size);
 			aes_128_cbc_encrypt(data_to_encrypt, cd->server_write_key, IV, data_to_encrypt_size / BLOCK_CIPHER_BLOCK_LENGTH, result);
 			memcpy(data_to_encrypt, result, data_to_encrypt_size);
+			rawhttps_crypto_data* cd_nao_const = (rawhttps_crypto_data*)cd;
+			++cd_nao_const->seq_number;
 		}
 		else
 		{
@@ -327,10 +338,20 @@ static int handshake_finished_message_send(const rawhttps_crypto_data* cd, int c
 	return 0;
 }
 
+static int application_data_send(const rawhttps_crypto_data* cd, int connected_socket,
+	unsigned char* content, long long content_length)
+{
+	if (send_higher_layer_packet(cd, content, content_length, APPLICATION_DATA_PROTOCOL, connected_socket))
+		return -1;
+
+	return 0;
+}
+
 static int pre_master_secret_decrypt(unsigned char* result, unsigned char* encrypted, int length)
 {
 	int err = 0;
 	PrivateKey pk = asn1_parse_pem_private_key_from_file("./certificate/new_cert/key.pem", &err);
+	//PrivateKey pk = asn1_parse_pem_private_key_from_file("./certificate/key_decrypted.pem", &err);
 	if (err) return -1;
 	HoBigInt encrypted_big_int = hobig_int_new_from_memory((char*)encrypted, length);
 	Decrypt_Data dd = decrypt_pkcs1_v1_5(pk, encrypted_big_int, &err);
@@ -366,6 +387,7 @@ int rawhttps_tls_handshake(rawhttps_tls_state* ts, rawhttps_parser_state* ps, in
 							ts->server_random_number, &ts->handshake_messages);
 						int cert_size;
 						unsigned char* cert = util_file_to_memory("./certificate/new_cert/cert.bin", &cert_size);
+						//unsigned char* cert = util_file_to_memory("./certificate/cert_binary", &cert_size);
 						//int err = 0;
 						//RSA_Certificate cert = asn1_parse_pem_certificate_from_file("./certificate/new_cert/cert.pem", &err);
 						//if (err)
@@ -452,6 +474,16 @@ int rawhttps_tls_handshake(rawhttps_tls_state* ts, rawhttps_parser_state* ps, in
 						ts->cd.decryption_enabled = true;
 					} break;
 				}
+			} break;
+			case APPLICATION_DATA_PROTOCOL: {
+				int i = 0;
+				++i;
+				unsigned char buf[] = "HTTP/1.0 200 OK\r\n"
+					"Connection: Keep-Alive\r\n"
+					"Content-Length: 11\r\n"
+					"\r\n"
+					"Hello World";
+				application_data_send(&ts->cd, connected_socket, buf, sizeof(buf) - 1);
 			} break;
 		}
 	}

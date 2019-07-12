@@ -26,7 +26,7 @@ typedef struct {
 	unsigned char server_write_key[16];
 	unsigned char client_write_IV[16];
 	unsigned char server_write_IV[16];
-	unsigned char seq_number[8];
+	unsigned long long seq_number;
 } rawhttps_crypto_data;
 
 int rawhttps_parser_state_create(rawhttps_parser_state* ps);

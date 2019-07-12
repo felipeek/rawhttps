@@ -8,7 +8,8 @@
 
 typedef enum {
 	HANDSHAKE_PROTOCOL = 0x16,
-	CHANGE_CIPHER_SPEC_PROTOCOL = 0x14
+	CHANGE_CIPHER_SPEC_PROTOCOL = 0x14,
+	APPLICATION_DATA_PROTOCOL = 0x17
 } protocol_type;
 
 typedef enum {
