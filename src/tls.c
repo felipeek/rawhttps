@@ -27,8 +27,7 @@
 
 int rawhttps_tls_state_create(rawhttps_tls_state* ts)
 {
-	ts->cd.encryption_enabled = false;
-	ts->cd.decryption_enabled = false;
+	memset(&ts->cd, 0, sizeof(rawhttps_crypto_data));
 	util_dynamic_buffer_new(&ts->handshake_messages, 10 * 1024 /* @TODO: changeme */);
 	return 0;
 }
@@ -39,18 +38,14 @@ void rawhttps_tls_state_destroy(rawhttps_tls_state* ts)
 }
 
 // sends a single record packet to the client
-static int send_record(const unsigned char* data, int record_size, protocol_type type, int connected_socket)
+static int send_record(const unsigned char* record_header, int record_header_length, const unsigned char* record_data,
+	int record_data_length, protocol_type type, int connected_socket)
 {
 	struct iovec iov[2];
-	unsigned char record_header[5];
-	record_header[0] = type;
-	*(unsigned short*)(record_header + 1) = BIG_ENDIAN_16(TLS12);
-	*(unsigned short*)(record_header + 3) = BIG_ENDIAN_16(record_size);
-
 	iov[0].iov_base = record_header;
-	iov[0].iov_len = 5;
-	iov[1].iov_base = data;
-	iov[1].iov_len = record_size;
+	iov[0].iov_len = record_header_length;
+	iov[1].iov_base = record_data;
+	iov[1].iov_len = record_data_length;
 
 	struct msghdr hdr = {0};
 	hdr.msg_iov = iov;
@@ -67,7 +62,7 @@ static int send_record(const unsigned char* data, int record_size, protocol_type
 	// @TODO: in an excepcional case, writev() could write less bytes than requested...
 	// we should look at writev() documentation and decide what to do in this particular case
 	// for now, throw an error...
-	if (written != 5 + record_size)
+	if (written != record_header_length + record_data_length)
 		return -1;
 	
 	return 0;
@@ -80,12 +75,14 @@ static int send_higher_layer_packet(const rawhttps_crypto_data* cd, const unsign
 	long long size_remaining = size;
 	unsigned char* record_data = NULL;
 	unsigned long long record_data_length = 0;
+	unsigned char record_header[5] = {0};
 
 	if (cd->encryption_enabled) record_data = calloc(1, RECORD_PROTOCOL_DATA_MAX_SIZE);
 
 	while (size_remaining > 0)
 	{
 		long long higher_layer_size_to_send = 0;
+
 		if (cd->encryption_enabled)
 		{
 			const unsigned int IV_SIZE = 16;
@@ -110,6 +107,10 @@ static int send_higher_layer_packet(const rawhttps_crypto_data* cd, const unsign
 			// if it's not visibile, this code should be fixed
 			assert(record_data_length <= RECORD_PROTOCOL_DATA_MAX_SIZE);
 
+			record_header[0] = type;
+			*(unsigned short*)(record_header + 1) = BIG_ENDIAN_16(TLS12);
+			*(unsigned short*)(record_header + 3) = BIG_ENDIAN_16(record_data_length);
+
 			// Calculate IV
 			// For now, we are using the Server Write IV as the CBC IV for all packets
 			// This must be random and new for each packet
@@ -118,7 +119,20 @@ static int send_higher_layer_packet(const rawhttps_crypto_data* cd, const unsign
 
 			// Calculate MAC
 			// TODO
+			// just for testing, this thing should be redesigned.
 			unsigned char mac[20] = {0};
+			dynamic_buffer mac_message;
+			util_dynamic_buffer_new(&mac_message, 1024);
+			util_dynamic_buffer_add(&mac_message, cd->seq_number, 8);
+			unsigned char mac_tls_type = type;
+			unsigned short mac_tls_version = BIG_ENDIAN_16(TLS12);
+			unsigned short mac_tls_length = BIG_ENDIAN_16(higher_layer_size_to_send);
+			util_dynamic_buffer_add(&mac_message, &mac_tls_type, 1);
+			util_dynamic_buffer_add(&mac_message, &mac_tls_version, 2);
+			util_dynamic_buffer_add(&mac_message, &mac_tls_length, 2);
+			*(unsigned short*)(record_header + 3) = BIG_ENDIAN_16(record_data_length);
+			util_dynamic_buffer_add(&mac_message, data + size - size_remaining, higher_layer_size_to_send);
+			hmac(sha1, cd->server_write_mac_key, 20, mac_message.buffer, mac_message.size, mac, 20);
 
 			unsigned char* record_data_ptr = record_data;
 			memcpy(record_data_ptr, IV, IV_SIZE);
@@ -147,10 +161,14 @@ static int send_higher_layer_packet(const rawhttps_crypto_data* cd, const unsign
 			long long buffer_position = size - size_remaining;
 			record_data = data + buffer_position;
 			record_data_length = higher_layer_size_to_send;
+
+			record_header[0] = type;
+			*(unsigned short*)(record_header + 1) = BIG_ENDIAN_16(TLS12);
+			*(unsigned short*)(record_header + 3) = BIG_ENDIAN_16(record_data_length);
 		}
 
 		// Send record packet
-		if (send_record(record_data, record_data_length, type, connected_socket))
+		if (send_record(record_header, 5, record_data, record_data_length, type, connected_socket))
 		{
 			if (cd->encryption_enabled) free(record_data);
 			return -1;
