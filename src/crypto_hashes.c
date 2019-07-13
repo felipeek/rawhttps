@@ -26,7 +26,7 @@ u32_to_str_base16(uint32_t value, int leading_zeros, char* buffer)
  */
 
 static void 
-sha1_buffer_to_block(const char* buffer, int length, uint32_t block[16]) {
+sha1_buffer_to_block(const unsigned char* buffer, int length, uint32_t block[16]) {
     for (uint64_t i = 0; i < SHA1_BLOCK_INTS; i += 1) {
         block[i] = ((uint32_t)(buffer[4*i+3] & 0xff) | ((uint32_t)(buffer[4*i+2] & 0xff)<<8)
             | ((uint32_t)(buffer[4*i+1] & 0xff)<<16)
@@ -177,7 +177,7 @@ sha1_transform(uint32_t digest[5], uint32_t block[16]) {
 }
 
 void 
-sha1(const char* buffer, int length, char out[20]) {
+sha1(const unsigned char* buffer, int length, unsigned char out[20]) {
     uint32_t digest[5] = {0x67452301, 0xEFCDAB89, 0x98BADCFE, 0x10325476, 0xC3D2E1F0};
     uint32_t block[16] = {0};
 
@@ -190,7 +190,7 @@ sha1(const char* buffer, int length, char out[20]) {
         buffer += 64;
     }
 
-    char last_buffer[64] = {0};
+    unsigned char last_buffer[64] = {0};
 
     // n is the amount of bytes still left
     int n = length % 64;
@@ -225,7 +225,7 @@ sha1(const char* buffer, int length, char out[20]) {
 }
 
 void 
-sha1_to_string(char in[20], char out[40]) {
+sha1_to_string(unsigned char in[20], unsigned char out[40]) {
     const int SHA1_DIGEST_SIZE = 5;
     for (uint64_t i = 0; i < SHA1_DIGEST_SIZE; i += 1) {
         uint32_t v = ((uint32_t*)in)[i];
@@ -252,7 +252,7 @@ sha256_k[64] = {
 };
 
 static void 
-sha256_transform(char* buffer, uint32_t digest[8], uint32_t ms[64]) {
+sha256_transform(const unsigned char* buffer, uint32_t digest[8], uint32_t ms[64]) {
     #define ROL(a,b) (((a) << (b)) | ((a) >> (32-(b))))
     #define ROR(a,b) (((a) >> (b)) | ((a) << (32-(b))))
     #define CH(x,y,z) (((x) & (y)) ^ (~(x) & (z)))
@@ -317,7 +317,7 @@ sha256(const unsigned char* buffer, int length, unsigned char out[32]) {
         buffer += 64;
     }
 
-    char last_buffer[64] = {0};
+    unsigned char last_buffer[64] = {0};
     // n is the amount of bytes still left
     int n = length % 64;
     // copy it to the buffer with padding
@@ -350,7 +350,7 @@ sha256(const unsigned char* buffer, int length, unsigned char out[32]) {
 }
 
 void 
-sha256_to_string(char in[32], char out[64]) {
+sha256_to_string(unsigned char in[32], unsigned char out[64]) {
     const int SHA256_DIGEST_SIZE = 8;
     for (uint64_t i = 0; i < SHA256_DIGEST_SIZE; i += 1) {
         uint32_t v = ((uint32_t*)in)[i];
@@ -392,7 +392,7 @@ static uint32_t md5_k[] = {
     0xf7537e82, 0xbd3af235, 0x2ad7d2bb, 0xeb86d391
 };
 
-void md5_buffer_to_block(char* buffer, uint32_t block[16]) {
+void md5_buffer_to_block(unsigned char* buffer, uint32_t block[16]) {
     for (uint64_t i = 0; i < MD5_BLOCK_INTS; i += 1) {
         block[i] = ((uint32_t)(buffer[4*i+3] & 0xff) | ((uint32_t)(buffer[4*i+2] & 0xff)<<8)
             | ((uint32_t)(buffer[4*i+1] & 0xff)<<16)
@@ -439,7 +439,7 @@ md5_transform(uint32_t digest[4], uint32_t block[16]) {
 }
 
 void 
-md5(const char* buffer, int length, char out[16]) {
+md5(const unsigned char* buffer, int length, unsigned char out[16]) {
     uint32_t digest[] = { 0x67452301, 0xEFCDAB89, 0x98BADCFE, 0x10325476 };
     uint32_t block[16] = {0};
 
@@ -452,7 +452,7 @@ md5(const char* buffer, int length, char out[16]) {
         buffer += 64;
     }
 
-    char last_buffer[64] = {0};
+    unsigned char last_buffer[64] = {0};
 
     // n is the amount of bytes still left
     int n = length % 64;
@@ -487,7 +487,7 @@ md5(const char* buffer, int length, char out[16]) {
 }
 
 void 
-md5_to_string(char in[16], char out[32]) {
+md5_to_string(unsigned char in[16], unsigned char out[32]) {
     const int MD5_DIGEST_SIZE = 4;
     for (uint64_t i = 0; i < MD5_DIGEST_SIZE; i += 1) {
         uint32_t v = ((uint32_t*)in)[i];

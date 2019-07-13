@@ -19,6 +19,9 @@ typedef struct {
     HoBigInt  P;
     HoBigInt  Q;
     HoBigInt  PrivateExponent;
+    HoBigInt  DP;
+    HoBigInt  DQ;
+    HoBigInt  QINV;
 } PrivateKey;
 
 typedef enum {
@@ -57,12 +60,16 @@ typedef struct {
 	Base64_Data         raw;
 } RSA_Certificate;
 
-PublicKey  asn1_parse_public_key_from_file(const char* filename, int* error);
-PublicKey  asn1_parse_pem_public_key_from_file(const char* filename, int* error);
-PrivateKey asn1_parse_pem_private_key_from_file(const char* filename, int* error);
+PublicKey       asn1_parse_public_key_from_file(const char* filename, int* error);
+PublicKey       asn1_parse_pem_public_key_from_file(const char* filename, int* error);
+PrivateKey      asn1_parse_pem_private_key_from_file(const char* filename, int* error);
+PrivateKey      asn1_parse_pem_private_certificate_key_from_file(const char* filename, int* error);
 RSA_Certificate asn1_parse_pem_certificate_from_file(const char* filename, int* error);
 
+// RSA Certificate in the PEM format
 RSA_Certificate asn1_parse_pem_certificate(const unsigned char* data, int length, int* error, int is_base64_encoded);
+
+PrivateKey asn1_parse_pem_private_certificate_key(const unsigned char* data, int length_bytes, int* error, int is_base64_encoded);
 
 // Public Key in the format of openssl
 PublicKey asn1_parse_public_key(const unsigned char* data, int length, int* error, int is_base64_encoded);

@@ -425,13 +425,20 @@ asn1_parse_pem_private(const u8* data, int length, int* error, int is_base64_enc
     key.P = seq[4]->integer.i;
     key.Q = seq[5]->integer.i;
     
-    for(int i = 6; i < array_length(seq); ++i) {
-        if(seq[i]->kind == DER_INTEGER) {
-            hobig_free(seq[i]->integer.i);
+    if(array_length(seq) == 9) {
+        // We have DP, DQ and QINV
+        if(seq[6]->kind == DER_INTEGER) {
+            key.DP = seq[6]->integer.i;
+        }
+        if(seq[7]->kind == DER_INTEGER) {
+            key.DQ = seq[7]->integer.i;
+        }
+        if (seq[8]->kind == DER_INTEGER) {
+            key.QINV = seq[8]->integer.i;
         }
     }
 
-    free(r.data);
+    if(is_base64_encoded) { free(r.data); }
     arena_free(arena);
     return key;
 }
@@ -801,6 +808,61 @@ load_entire_file(const char* filename, int* out_size) {
     return memory;
 }
 
+static const unsigned char*
+asn1_parse_pem_header_and_footer(
+    const char* filename, 
+    const char* header, int header_size,
+    const char* footer, int footer_size,
+    int* out_length, int* error) 
+{
+    int file_size = 0;
+    void* memory = load_entire_file(filename, &file_size);
+    if(!memory) { if(error) *error |= 1; return 0; };
+
+    // File contents are loaded
+    char* at = memory;
+    int at_index = 0;
+
+    while(is_whitespace(*at)) { at++; at_index++; }
+    if((file_size - at_index < header_size) || strncmp(header, at, header_size) != 0) 
+    {
+        // File is not large enough or pattern not found
+        free(memory);
+        fprintf(stderr, "File format invalid, expected %s\n", header);
+        return 0;
+    }
+
+    at += header_size;
+    while(is_whitespace(*at)) { at++; at_index++; }
+
+    char* start_data = at;
+    while(*at != '-') { at++; at_index++; }
+    int data_bytes = at - start_data;
+    unsigned char* d = calloc(1, data_bytes + 1);
+
+    // footer follows
+    if((file_size - at_index < footer_size) || strncmp(footer, at, footer_size) != 0) 
+    {
+        // File is not large enough or pattern not found
+        free(d);
+        free(memory);
+        fprintf(stderr, "File format invalid, expected %s\n", footer);
+        return 0;
+    }
+
+    at = start_data;
+    int trimmed_length = 0;
+    for(int i = 0, k = 0; i < data_bytes; ++i, at++) {
+        if(!is_whitespace(*at)) {
+            d[k++] = *at;
+            trimmed_length++;
+        }
+    }
+
+    if(out_length) *out_length += trimmed_length;
+    return d;
+}
+
 PublicKey 
 asn1_parse_public_key_from_file(const char* filename, int* error) {
     int file_size = 0;
@@ -836,162 +898,154 @@ asn1_parse_public_key_from_file(const char* filename, int* error) {
     return pubk;
 }
 
-PublicKey
-asn1_parse_pem_public_key_from_file(const char* filename, int* error) {
-    int file_size = 0;
-    void* memory = load_entire_file(filename, &file_size);
-    if(!memory) { if(error) *error |= 1; return (PublicKey){0}; };
-
-    // File contents are loaded
-    char* at = memory;
-    int at_index = 0;
-
-    while(is_whitespace(*at)) { at++; at_index++; }
-    if((file_size - at_index < sizeof("-----BEGIN PUBLIC KEY-----") - 1) ||
-        strncmp("-----BEGIN PUBLIC KEY-----", at, sizeof("-----BEGIN PUBLIC KEY-----") - 1) != 0) 
-    {
-        // File is not large enough or pattern not found
-        free(memory);
-        fprintf(stderr, "File format invalid, expected -----BEGIN PUBLIC KEY-----\n");
-        return (PublicKey){0};
+/*
+    PrivateKeyInfo ::= SEQUENCE {
+    version         Version,
+    algorithm       AlgorithmIdentifier,
+    PrivateKey      OCTET STRING
     }
 
-    at += sizeof("-----BEGIN PUBLIC KEY-----") - 1;
-    while(is_whitespace(*at)) { at++; at_index++; }
-
-    char* start_data = at;
-    while(*at != '-') { at++; at_index++; }
-    int data_bytes = at - start_data;
-    char* d = calloc(1, data_bytes + 1);
-
-    // -----END PUBLIC KEY----- follows
-    if((file_size - at_index < sizeof("-----END PUBLIC KEY-----") - 1) ||
-        strncmp("-----END PUBLIC KEY-----", at, sizeof("-----END PUBLIC KEY-----") - 1) != 0) 
-    {
-        // File is not large enough or pattern not found
-        free(d);
-        free(memory);
-        fprintf(stderr, "File format invalid, expected -----END PUBLIC KEY-----\n");
-        return (PublicKey){0};
+    AlgorithmIdentifier ::= SEQUENCE {
+    algorithm       OBJECT IDENTIFIER,
+    parameters      ANY DEFINED BY algorithm OPTIONAL
     }
-
-    at = start_data;
-    int trimmed_length = 0;
-    for(int i = 0, k = 0; i < data_bytes; ++i, at++) {
-        if(!is_whitespace(*at)) {
-            d[k++] = *at;
-            trimmed_length++;
+ */
+PrivateKey 
+asn1_parse_pem_private_certificate_key(const unsigned char* data, int length_bytes, int* error, int is_base64_encoded) {
+    Base64_Data r = {0};
+    if(is_base64_encoded) {
+        r = base64_decode((const u8*)data, length_bytes);
+        if(r.error != 0) {
+            fprintf(stderr, "Could not parse key base64 data\n");
+            free(r.data);
+            if(error) *error |= 1;
+            return (PrivateKey){0};
         }
+    } else {
+        r.data = (char*)data;
+        r.length = length_bytes;
     }
 
-    PublicKey result = asn1_parse_pem_public((const u8*)d, trimmed_length, error, 1);
+    Light_Arena* arena = arena_create(65535);
+    DER_Node* node = parse_der(arena, (u8*)r.data, r.length, error);
+    PrivateKey key = {0};
 
-    return result;
+    #define FATAL_PEM_PRIVATE(T) if(error) *error |= 1; \
+        fprintf(stderr, T); \
+        if(is_base64_encoded) free(r.data); \
+        arena_free(arena); \
+        private_key_free(key); \
+        return (PrivateKey){0};
+
+    if(node->kind != DER_SEQUENCE) {
+        FATAL_PEM_PRIVATE("Could not parse private key, expected DER sequence\n");
+    }
+
+    if(array_length(node->sequence.data) != 3) {
+        FATAL_PEM_PRIVATE("Could not parse private key, top level DER must contain 3 entries\n");
+    }
+
+    DER_Node* alg_ident = node->sequence.data[1];
+    if(alg_ident->kind != DER_SEQUENCE || array_length(alg_ident->sequence.data) < 1) {
+        FATAL_PEM_PRIVATE("Could not parse private key, expected AlgorithmIdentifier sequence\n");
+    }
+
+    if(alg_ident->sequence.data[0]->kind != DER_OBJECT_ID) {
+        FATAL_PEM_PRIVATE("Could not parse private key, expected object id\n");
+    }
+
+    DER_Object_ID obj_id = alg_ident->sequence.data[0]->object_id;
+    Signature_Algorithm salg = signature_algorithm_from_oid(obj_id);
+
+    if(salg != Sig_RSA) {
+        FATAL_PEM_PRIVATE("Unsupported signature algorithm, only RSA is supported\n");
+    }
+
+    if(node->sequence.data[2]->kind != DER_OCT_STRING) {
+        FATAL_PEM_PRIVATE("Could not find private key OCT_STRING\n");
+    }
+
+    // Oct String contains the Private Key
+    DER_Oct_String oct_str = node->sequence.data[2]->oct_string;
+    key = asn1_parse_pem_private((const u8*)oct_str.data, oct_str.length, error, 0);
+
+    free(r.data);
+    arena_free(arena);
+    return key;
+}
+
+PrivateKey
+asn1_parse_pem_private_certificate_key_from_file(const char* filename, int* error) {
+    const char header[] = "-----BEGIN PRIVATE KEY-----";
+    const char footer[] = "-----END PRIVATE KEY-----";
+    int length_bytes = 0;
+
+    const unsigned char* data = asn1_parse_pem_header_and_footer(filename, 
+        header, sizeof(header) - 1, 
+        footer, sizeof(footer) - 1,
+        &length_bytes, error);
+
+    if(error && *error) {
+        if(data) free((void*)data);
+        return (PrivateKey){0};
+    }
+
+    return asn1_parse_pem_private_certificate_key(data, length_bytes, error, 1);
+}
+
+RSA_Certificate
+asn1_parse_pem_certificate_from_file(const char* filename, int* error) {
+    const char header[] = "-----BEGIN CERTIFICATE-----";
+    const char footer[] = "-----END CERTIFICATE-----";
+    int length_bytes = 0;
+
+    const unsigned char* data = asn1_parse_pem_header_and_footer(filename, 
+        header, sizeof(header) - 1, 
+        footer, sizeof(footer) - 1,
+        &length_bytes, error);
+
+    if(error && *error) {
+        if(data) free((void*)data);
+        return (RSA_Certificate){0};
+    }
+
+    return asn1_parse_pem_certificate(data, length_bytes, error, 1);
 }
 
 PrivateKey
 asn1_parse_pem_private_key_from_file(const char* filename, int* error) {
-    int file_size = 0;
-    void* memory = load_entire_file(filename, &file_size);
-    if(!memory) { if(error) *error |= 1; return (PrivateKey){0}; };
+    const char header[] = "-----BEGIN RSA PRIVATE KEY-----";
+    const char footer[] = "-----END RSA PRIVATE KEY-----";
+    int length_bytes = 0;
 
-    // File contents are loaded
-    char* at = memory;
-    int at_index = 0;
+    const unsigned char* data = asn1_parse_pem_header_and_footer(filename, 
+        header, sizeof(header) - 1, 
+        footer, sizeof(footer) - 1,
+        &length_bytes, error);
 
-    while(is_whitespace(*at)) { at++; at_index++; }
-    if((file_size - at_index < sizeof("-----BEGIN RSA PRIVATE KEY-----") - 1) ||
-        strncmp("-----BEGIN RSA PRIVATE KEY-----", at, sizeof("-----BEGIN RSA PRIVATE KEY-----") - 1) != 0) 
-    {
-        // File is not large enough or pattern not found
-        free(memory);
-        fprintf(stderr, "File format invalid, expected -----BEGIN RSA PRIVATE KEY-----\n");
+    if(error && *error) {
+        if(data) free((void*)data);
         return (PrivateKey){0};
     }
 
-    at += sizeof("-----BEGIN RSA PRIVATE KEY-----") - 1;
-    while(is_whitespace(*at)) { at++; at_index++; }
-
-    char* start_data = at;
-    while(*at != '-') { at++; at_index++; }
-    int data_bytes = at - start_data;
-    char* d = calloc(1, data_bytes + 1);
-
-    // -----END RSA PRIVATE KEY----- follows
-    if((file_size - at_index < sizeof("-----END RSA PRIVATE KEY-----") - 1) ||
-        strncmp("-----END RSA PRIVATE KEY-----", at, sizeof("-----END RSA PRIVATE KEY-----") - 1) != 0) 
-    {
-        // File is not large enough or pattern not found
-        free(d);
-        free(memory);
-        fprintf(stderr, "File format invalid, expected -----END PUBLIC KEY-----\n");
-        return (PrivateKey){0};
-    }
-
-    at = start_data;
-    int trimmed_length = 0;
-    for(int i = 0, k = 0; i < data_bytes; ++i, at++) {
-        if(!is_whitespace(*at)) {
-            d[k++] = *at;
-            trimmed_length++;
-        }
-    }
-
-    PrivateKey result = asn1_parse_pem_private((const u8*)d, trimmed_length, error, 1);
-
-    return result;
+    return asn1_parse_pem_private(data, length_bytes, error, 1);
 }
 
-RSA_Certificate 
-asn1_parse_pem_certificate_from_file(const char* filename, int* error) {
-    //-----BEGIN CERTIFICATE-----
-    int file_size = 0;
-    void* memory = load_entire_file(filename, &file_size);
-    if(!memory) { if(error) *error |= 1; return (RSA_Certificate){0}; };
+PublicKey
+asn1_parse_pem_public_key_from_file(const char* filename, int* error) {
+    const char header[] = "-----BEGIN PUBLIC KEY-----";
+    const char footer[] = "-----END PUBLIC KEY-----";
+    int length_bytes = 0;
 
-    // File contents are loaded
-    char* at = memory;
-    int at_index = 0;
+    const unsigned char* data = asn1_parse_pem_header_and_footer(filename, 
+        header, sizeof(header) - 1, 
+        footer, sizeof(footer) - 1,
+        &length_bytes, error);
 
-    while(is_whitespace(*at)) { at++; at_index++; }
-    if((file_size - at_index < sizeof("-----BEGIN CERTIFICATE-----") - 1) ||
-        strncmp("-----BEGIN CERTIFICATE-----", at, sizeof("-----BEGIN CERTIFICATE-----") - 1) != 0) 
-    {
-        // File is not large enough or pattern not found
-        free(memory);
-        fprintf(stderr, "File format invalid, expected -----BEGIN CERTIFICATE-----\n");
-        return (RSA_Certificate){0};
+    if(error && *error) {
+        if(data) free((void*)data);
+        return (PublicKey){0};
     }
 
-    at += sizeof("-----BEGIN CERTIFICATE-----") - 1;
-    while(is_whitespace(*at)) { at++; at_index++; }
-
-    char* start_data = at;
-    while(*at != '-') { at++; at_index++; }
-    int data_bytes = at - start_data;
-    char* d = calloc(1, data_bytes + 1);
-
-    // -----END CERTIFICATE----- follows
-    if((file_size - at_index < sizeof("-----END CERTIFICATE-----") - 1) ||
-        strncmp("-----END CERTIFICATE-----", at, sizeof("-----END CERTIFICATE-----") - 1) != 0) 
-    {
-        // File is not large enough or pattern not found
-        free(d);
-        free(memory);
-        fprintf(stderr, "File format invalid, expected -----END CERTIFICATE-----\n");
-        return (RSA_Certificate){0};
-    }
-
-    at = start_data;
-    int trimmed_length = 0;
-    for(int i = 0, k = 0; i < data_bytes; ++i, at++) {
-        if(!is_whitespace(*at)) {
-            d[k++] = *at;
-            trimmed_length++;
-        }
-    }
-
-    RSA_Certificate result = asn1_parse_pem_certificate((const u8*)d, trimmed_length, error, 1);
-
-    return result;
+    return asn1_parse_pem_public(data, length_bytes, error, 1);
 }
