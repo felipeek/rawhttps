@@ -2,6 +2,7 @@
 #define RAWHTTPS_PARSER_H
 #include "protocol.h"
 #include "util.h"
+#include "record.h"
 typedef struct {
 	unsigned char* buffer;
 	long long buffer_size;
@@ -9,11 +10,11 @@ typedef struct {
 
 	long long buffer_position_get;
 	long long buffer_position_fetch;
-} rawhttps_parser_buffer;
+} rawhttps_message_buffer;
 
 typedef struct {
-	rawhttps_parser_buffer record_buffer;
-	rawhttps_parser_buffer message_buffer;
+	rawhttps_record_buffer record_buffer;
+	rawhttps_message_buffer message_buffer;
 	protocol_type type;
 } rawhttps_parser_state;
 

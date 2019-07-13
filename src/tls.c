@@ -569,6 +569,8 @@ int rawhttps_tls_handshake(rawhttps_tls_state* ts, rawhttps_parser_state* ps, in
 						generate_verify_data_from_handshake_messages(&ts->handshake_messages,
 							ts->server_connection_state.security_parameters.master_secret, verify_data);
 						handshake_finished_message_send(&ts->server_connection_state, connected_socket, verify_data);
+						ts->hanshake_completed = true;
+						return 0;
 					} break;
 					case SERVER_HELLO_MESSAGE:
 					case SERVER_CERTIFICATE_MESSAGE:
@@ -587,6 +589,8 @@ int rawhttps_tls_handshake(rawhttps_tls_state* ts, rawhttps_parser_state* ps, in
 				}
 			} break;
 			case APPLICATION_DATA_PROTOCOL: {
+				printf("Application Data received before handshake was finished");
+				return -1;
 				int i = 0;
 				++i;
 				unsigned char buf[] = "HTTP/1.0 200 OK\r\n"
@@ -598,4 +602,9 @@ int rawhttps_tls_handshake(rawhttps_tls_state* ts, rawhttps_parser_state* ps, in
 			} break;
 		}
 	}
+}
+
+int rawhttps_tls_read(rawhttps_tls_state* ts)
+{
+
 }

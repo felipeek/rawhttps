@@ -98,6 +98,9 @@ static void* rawhttps_server_new_connection_callback(void* arg)
 		return NULL;
 	}
 
+	printf("TODO now...\n");
+	getchar();
+
 	rawhttps_parser_state_destroy(&ps);
 	rawhttps_tls_state_destroy(&ts);
 
