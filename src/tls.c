@@ -221,18 +221,6 @@ static int build_tls_cipher_text(const rawhttps_connection_state* server_cs, con
 }
 
 // receives a higher layer packet, splits the packet into several record packets and send to the client
-/*
-*
-*
-*
-*
-*
-* REFACTOR HERE
-*
-*
-*
-*
-*/
 static int send_higher_layer_packet(const rawhttps_connection_state* server_cs, const unsigned char* data, long long size,
 	protocol_type type, int connected_socket)
 {
@@ -502,13 +490,19 @@ static void generate_verify_data_from_handshake_messages(const dynamic_buffer* a
 int rawhttps_tls_handshake(rawhttps_tls_state* ts, rawhttps_parser_state* ps, int connected_socket)
 {
 	tls_packet p;
+	protocol_type type;
+
 	while (1)
 	{
-		if (rawhttps_parser_parse_ssl_packet(&ts->client_connection_state, &p, ps, connected_socket, &ts->handshake_messages))
+		// Little hack: We need to force fetching a new record data, so we are able to get the protocol type!
+		if (rawhttps_parser_protocol_type_get_next(ps, connected_socket, &ts->client_connection_state, &type))
 			return -1;
-		switch (p.type)
+
+		switch (type)
 		{
 			case HANDSHAKE_PROTOCOL: {
+				if (rawhttps_parser_handshake_packet_parse(&p, ps, connected_socket, &ts->client_connection_state, &ts->handshake_messages))
+					return -1;
 				switch (p.subprotocol.hp.hh.message_type)
 				{
 					case CLIENT_HELLO_MESSAGE: {
@@ -581,6 +575,8 @@ int rawhttps_tls_handshake(rawhttps_tls_state* ts, rawhttps_parser_state* ps, in
 				}
 			} break;
 			case CHANGE_CIPHER_SPEC_PROTOCOL: {
+				if (rawhttps_parser_change_cipher_spec_parse(&p, ps, connected_socket, &ts->client_connection_state))
+					return -1;
 				switch (p.subprotocol.ccsp.message) {
 					case CHANGE_CIPHER_SPEC_MESSAGE: {
 						printf("Client asked to activate encryption via CHANGE_CIPHER_SPEC message\n");
@@ -591,20 +587,39 @@ int rawhttps_tls_handshake(rawhttps_tls_state* ts, rawhttps_parser_state* ps, in
 			case APPLICATION_DATA_PROTOCOL: {
 				printf("Application Data received before handshake was finished");
 				return -1;
-				int i = 0;
-				++i;
-				unsigned char buf[] = "HTTP/1.0 200 OK\r\n"
-					"Connection: Keep-Alive\r\n"
-					"Content-Length: 11\r\n"
-					"\r\n"
-					"Hello World";
-				application_data_send(&ts->server_connection_state, connected_socket, buf, sizeof(buf) - 1);
 			} break;
 		}
 	}
+
+	return -1;
 }
 
-int rawhttps_tls_read(rawhttps_tls_state* ts)
+long long rawhttps_tls_read(rawhttps_tls_state* ts, rawhttps_parser_state* ps, int connected_socket,
+	unsigned char data[RECORD_PROTOCOL_TLS_PLAIN_TEXT_MAX_SIZE])
 {
+	protocol_type type;
 
+	// Little hack: We need to force fetching a new record data, so we are able to get the protocol type!
+	if (rawhttps_parser_protocol_type_get_next(ps, connected_socket, &ts->client_connection_state, &type))
+		return -1;
+
+	switch (type)
+	{
+		case HANDSHAKE_PROTOCOL: {
+			printf("Received handshake protocol inside tls_read\n");
+			return -1;
+		} break;
+		case CHANGE_CIPHER_SPEC_PROTOCOL: {
+			printf("Received change cipher spec protocol inside tls_read\n");
+			return -1;
+		} break;
+		case APPLICATION_DATA_PROTOCOL: {
+			long long bytes_written;
+			if (rawhttps_parser_application_data_parse(data, &bytes_written, ps, connected_socket, &ts->client_connection_state))
+				return -1;
+			return bytes_written;
+		} break;
+	}
+
+	return -1;
 }

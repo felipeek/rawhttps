@@ -99,7 +99,21 @@ static void* rawhttps_server_new_connection_callback(void* arg)
 	}
 
 	printf("TODO now...\n");
-	getchar();
+
+	while (1)
+	{
+		unsigned char data[RECORD_PROTOCOL_TLS_PLAIN_TEXT_MAX_SIZE];
+		long long data_read;
+		data_read = rawhttps_tls_read(&ts, &ps, connection->connected_socket, data);
+
+		if (data_read == -1)
+		{
+			printf("Error reading application data!");
+			return NULL;
+		}
+		printf("Got packet:\n");
+		printf("%.*s", data_read, data);
+	}
 
 	rawhttps_parser_state_destroy(&ps);
 	rawhttps_tls_state_destroy(&ts);

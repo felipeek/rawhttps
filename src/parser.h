@@ -9,7 +9,6 @@ typedef struct {
 	long long buffer_end;
 
 	long long buffer_position_get;
-	long long buffer_position_fetch;
 } rawhttps_message_buffer;
 
 typedef struct {
@@ -20,7 +19,12 @@ typedef struct {
 
 int rawhttps_parser_state_create(rawhttps_parser_state* ps);
 int rawhttps_parser_state_destroy(rawhttps_parser_state* ps);
-int rawhttps_parser_parse_ssl_packet(const rawhttps_connection_state* client_connection_state, tls_packet* packet,
-	rawhttps_parser_state* ps, int connected_socket, dynamic_buffer* handshake_messages);
-
+int rawhttps_parser_change_cipher_spec_parse(tls_packet* packet, rawhttps_parser_state* ps, int connected_socket,
+	rawhttps_connection_state* client_cs);
+int rawhttps_parser_handshake_packet_parse(tls_packet* packet, rawhttps_parser_state* ps, int connected_socket,
+	rawhttps_connection_state* client_cs, dynamic_buffer* handshake_messages);
+int rawhttps_parser_protocol_type_get_next(rawhttps_parser_state* ps, int connected_socket,
+	const rawhttps_connection_state* client_connection_state, protocol_type* type);
+int rawhttps_parser_application_data_parse(char data[RECORD_PROTOCOL_TLS_PLAIN_TEXT_MAX_SIZE], long long* bytes_written, rawhttps_parser_state* ps,
+	int connected_socket, rawhttps_connection_state* client_cs);
 #endif

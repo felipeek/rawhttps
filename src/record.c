@@ -136,7 +136,7 @@ static int record_data_decrypt(const rawhttps_connection_state* client_connectio
 
 // gets the data of the next record packet and stores in the received buffer. The type is also returned via 'type'
 long long rawhttps_record_get_data(rawhttps_record_buffer* record_buffer, int connected_socket,
-	unsigned char* data, protocol_type* type, const rawhttps_connection_state* client_connection_state)
+	unsigned char data[RECORD_PROTOCOL_TLS_PLAIN_TEXT_MAX_SIZE], protocol_type* type, const rawhttps_connection_state* client_connection_state)
 {
 	unsigned char* ptr;
 

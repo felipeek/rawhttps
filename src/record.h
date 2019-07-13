@@ -14,5 +14,5 @@ int rawhttps_record_buffer_create(rawhttps_record_buffer* record_buffer);
 void rawhttps_record_buffer_destroy(rawhttps_record_buffer* record_buffer);
 
 long long rawhttps_record_get_data(rawhttps_record_buffer* record_buffer, int connected_socket,
-	unsigned char* data, protocol_type* type, const rawhttps_connection_state* client_connection_state);
+	unsigned char data[RECORD_PROTOCOL_TLS_PLAIN_TEXT_MAX_SIZE], protocol_type* type, const rawhttps_connection_state* client_connection_state);
 #endif

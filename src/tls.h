@@ -17,5 +17,6 @@ typedef struct
 int rawhttps_tls_state_create(rawhttps_tls_state* ts);
 void rawhttps_tls_state_destroy(rawhttps_tls_state* ts);
 int rawhttps_tls_handshake(rawhttps_tls_state* ts, rawhttps_parser_state* ps, int connected_socket);
-int rawhttps_tls_read(rawhttps_tls_state* ts);
+long long rawhttps_tls_read(rawhttps_tls_state* ts, rawhttps_parser_state* ps, int connected_socket,
+	unsigned char data[RECORD_PROTOCOL_TLS_PLAIN_TEXT_MAX_SIZE]);
 #endif
