@@ -1,6 +1,22 @@
 #ifndef RAWHTTPS_PROTOCOL_H
 #define RAWHTTPS_PROTOCOL_H
 
+#define BIG_ENDIAN_16(x) ((((x) & 0xFF00) >> 8) | (((x) & 0x00FF) << 8))
+// note: for BIG_ENDIAN_24, since we receive an unsigned int, we keep the last byte untouched, i.e.
+// 01 02 03 04 05 06 00 00 is transformed to 05 06 03 04 01 02 00 00
+#define BIG_ENDIAN_24(x) ((((x) & 0x000000FF) << 16) | (((x) & 0x00FF0000) >> 16) | ((x) & 0x0000FF00))
+#define BIG_ENDIAN_32(x) ((((x) & 0xFF000000) >> 24) | (((x) & 0x00FF0000) >> 8) | (((x) & 0x0000FF00) << 8) | (((x) & 0x000000FF) << 24))
+#define BIG_ENDIAN_64(X) ((((X) & 0xff00000000000000) >> 56) | \
+    (((X) & 0xff000000000000) >> 40) | \
+    (((X) & 0xff0000000000) >> 24) | \
+    (((X) & 0xff00000000) >> 8) | \
+    (((X) & 0xff000000) << 8) | \
+    (((X) & 0xff0000) << 24) | \
+    (((X) & 0xff00) << 40) | \
+    (((X) & 0xff) << 56))
+#define LITTLE_ENDIAN_16(x) (((unsigned short)(x)[1]) | ((unsigned short)(x)[0] << 8))
+#define LITTLE_ENDIAN_24(x) (((unsigned int)(x)[2]) | ((unsigned int)(x)[1] << 8) | ((unsigned int)(x)[0] << 16))
+
 // In the record protocol, the cipher text can have 2048 bytes more than the plain text
 // Reference: https://tools.ietf.org/html/rfc5246#section-6.2.3 (TLS 1.2)
 #define RECORD_PROTOCOL_TLS_PLAIN_TEXT_MAX_SIZE 16384

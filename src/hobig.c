@@ -747,6 +747,7 @@ hobig_int_mod_div(HoBigInt* n, HoBigInt* exp, HoBigInt* m) {
  */
 static HoBigInt_DivResult 
 hobig_int_div_knuth(HoBigInt* u, HoBigInt* v) {
+	assert(array_length(u->value) >= array_length(v->value));
     TIME_COUNT();
     HoBigInt_DivResult result = {0};
 
@@ -832,6 +833,16 @@ hobig_int_div_knuth(HoBigInt* u, HoBigInt* v) {
     return result;
 }
 
+
+/* bug
+n:
+3498583697396045929521530877294658172929672028366635886651878300231171458955716406978353344141777843620007274024816664404408726333529655073078832344467478
+exp:
+4519843160463288062918580025639808781878043374837035832900655314965160862826437244686004073001718754779907361563410459626224219701665822904210168969401281
+m:
+10110484033288364727267901533905254561333242154983098415619163334591840653527959301220249016169719055550213534233664016249007347777310773318616485806202271
+*/
+#if 0
 HoBigInt_DivResult 
 hobig_int_div(HoBigInt* u, HoBigInt* v) {
     HoBigInt_DivResult result = {0};
@@ -852,3 +863,69 @@ hobig_int_div(HoBigInt* u, HoBigInt* v) {
 
     return hobig_int_div_knuth(u, v);
 }
+#endif
+
+#if 1
+HoBigInt_DivResult 
+hobig_int_div(HoBigInt* dividend, HoBigInt* divisor) {
+	TIME_COUNT();
+    HoBigInt_DivResult result = { 0 };
+
+    if(*divisor->value == 0) {
+        // Division by 0
+        assert(0);
+    }
+
+    int comparison = hobig_int_compare_absolute(dividend, divisor);
+
+    if(comparison == -1) {
+        // Dividend is smaller than divisor, quotient = 0 and remainder = dividend
+        result.quotient = hobig_int_new(0);
+        result.remainder = hobig_int_copy(*dividend);
+    } else if(comparison == 0) {
+        // Both numbers are equal, quotient is 1 and remainder is 0
+        result.quotient = hobig_int_new(1);
+        result.remainder = hobig_int_new(0);
+    } else {
+        // Perform long division since dividend > divisor
+        // 100101010 | 111101
+        HoBigInt remainder = hobig_int_new(0);
+        HoBigInt quotient = hobig_int_new(0);
+        HoBigInt one = hobig_int_new(1);
+
+        for(int k = array_length(dividend->value) - 1 ;; --k) {
+            u64 v = dividend->value[k];
+            for(int i = sizeof(*dividend->value) * 8 - 1; i >= 0; --i) {
+                multiply_by_pow2(&quotient, 1);
+                multiply_by_pow2(&remainder, 1);
+                int bit = (v >> i) & 1;
+                if(bit) {
+                    hobig_int_add(&remainder, &one);
+                }
+                int comparison = hobig_int_compare_absolute(&remainder, divisor);
+                if(comparison == 1) {
+                    // Ready to divide, quotient receives one
+                    // and divisor is subtracted from remainder 
+                    hobig_int_add(&quotient, &one);
+                    hobig_int_sub(&remainder, divisor);
+                } else if(comparison == 0) {
+                    // Division is 1 and remainder 0
+                    *remainder.value = 0;
+                    array_length(remainder.value) = 1;
+                    hobig_int_add(&quotient, &one);
+                } else {
+                    // Still not ready to divide
+                    // Put a zero in the quotient
+                }
+            }
+            if(k == 0) break;
+        }
+        result.quotient = quotient;
+        result.remainder = remainder;
+        hobig_free(one);
+    }
+
+    TIME_END(TIME_SLOT_DIVIDE);
+    return result;
+}
+#endif

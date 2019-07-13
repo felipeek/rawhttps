@@ -3,36 +3,15 @@
 #include "util.h"
 #include <stdlib.h>
 #include <stdio.h>
-#include <unistd.h>
-#include <sys/uio.h>
-#include <sys/types.h>
-#include <sys/socket.h>
-#include <errno.h>
 #include <memory.h>
 #include <assert.h>
 #include "hobig.h"
 #include "asn1.h"
 #include "pkcs1.h"
-#include "hmac.h"
 #include "common.h"
 #include "crypto_hashes.h"
-#include "aes_cbc.h"
 
 #define MIN(a,b) (((a) < (b)) ? (a) : (b))
-#define BIG_ENDIAN_16(x) ((((x) & 0xFF00) >> 8) | (((x) & 0x00FF) << 8))
-// note: for BIG_ENDIAN_24, since we receive an unsigned int, we keep the last byte untouched, i.e.
-// 01 02 03 04 05 06 00 00 is transformed to 05 06 03 04 01 02 00 00
-#define BIG_ENDIAN_24(x) ((((x) & 0x000000FF) << 16) | (((x) & 0x00FF0000) >> 16) | ((x) & 0x0000FF00))
-#define BIG_ENDIAN_32(x) ((((x) & 0xFF000000) >> 24) | (((x) & 0x00FF0000) >> 8) | (((x) & 0x0000FF00) << 8) | (((x) & 0x000000FF) << 24))
-#define BIG_ENDIAN_64(X) ((((X) & 0xff00000000000000) >> 56) | \
-    (((X) & 0xff000000000000) >> 40) | \
-    (((X) & 0xff0000000000) >> 24) | \
-    (((X) & 0xff00000000) >> 8) | \
-    (((X) & 0xff000000) << 8) | \
-    (((X) & 0xff0000) << 24) | \
-    (((X) & 0xff00) << 40) | \
-    (((X) & 0xff) << 56))
-
 #define PRE_MASTER_SECRET_SIZE 48
 
 static void security_parameters_set_for_cipher_suite(cipher_suite_type cipher_suite, rawhttps_security_parameters* sp, connection_end entity)
@@ -84,155 +63,16 @@ void rawhttps_tls_state_destroy(rawhttps_tls_state* ts)
 	util_dynamic_buffer_free(&ts->handshake_messages);
 }
 
-// sends a single record packet to the client
-static int send_cipher_text(const unsigned char* cipher_text, int cipher_text_length, int connected_socket)
+// generates the random number that is sent in the SERVER_HELLO packet and it's later used to generate the master key
+// @TODO: this function must be implemented correctly
+static void server_hello_random_number_generate(unsigned char server_random[32])
 {
-	struct iovec iov[2];
-	iov[0].iov_base = cipher_text;
-	iov[0].iov_len = cipher_text_length;
-
-	struct msghdr hdr = {0};
-	hdr.msg_iov = iov;
-	hdr.msg_iovlen = 1;
-	// MSG_NOSIGNAL to avoid SIGPIPE error
-	ssize_t written = sendmsg(connected_socket, &hdr, MSG_NOSIGNAL);
-
-	if (written < 0)
-	{
-		printf("Error sending record: %s\n", strerror(errno));
-		return -1;
-	}
-
-	// @TODO: in an excepcional case, writev() could write less bytes than requested...
-	// we should look at writev() documentation and decide what to do in this particular case
-	// for now, throw an error...
-	if (written != cipher_text_length)
-		return -1;
-	
-	return 0;
-}
-
-static int build_tls_cipher_text(const rawhttps_connection_state* server_cs, const unsigned char* fragment, int fragment_length,
-	protocol_type type, int connected_socket, unsigned char** _cipher_text)
-{
-	switch (server_cs->security_parameters.cipher)
-	{
-		case CIPHER_STREAM: {
-			unsigned char record_header[5];
-			record_header[0] = type;
-			*(unsigned short*)(record_header + 1) = BIG_ENDIAN_16(TLS12);
-			*(unsigned short*)(record_header + 3) = BIG_ENDIAN_16(fragment_length);
-
-			int cipher_text_size = sizeof(record_header) + fragment_length;
-			unsigned char* cipher_text = malloc(cipher_text_size);
-			unsigned char* cipher_text_ptr = cipher_text;
-			memcpy(cipher_text_ptr, record_header, sizeof(record_header));
-			cipher_text_ptr += sizeof(record_header);
-			memcpy(cipher_text_ptr, fragment, fragment_length);
-
-			*_cipher_text = cipher_text;
-			return cipher_text_size;
-		} break;
-		case CIPHER_BLOCK: {
-			// The fragment will have:
-			// 16 Bytes for IV
-			// N bytes for the higher layer message (it may have only part of it)
-			// 20 Bytes for the MAC
-			// M bytes for padding
-			// 1 byte for padding length (M)
-			// ---
-			// Padding: Padding that is added to force the length of the plaintext to be
-			// an integral multiple of the block cipher's block length
-			// https://tools.ietf.org/html/rfc5246#section-6.2.3.2
-			unsigned int cipher_text_content_length = server_cs->security_parameters.record_iv_length + fragment_length +
-				server_cs->security_parameters.mac_length + 1; // +1 for padding_length
-			unsigned char padding_length = server_cs->security_parameters.block_length - ((cipher_text_content_length -
-				server_cs->security_parameters.record_iv_length) % server_cs->security_parameters.block_length);
-			cipher_text_content_length += padding_length;
-			assert(cipher_text_content_length <= RECORD_PROTOCOL_TLS_CIPHER_TEXT_MAX_SIZE);
-
-			unsigned char record_header[5];
-			record_header[0] = type;
-			*(unsigned short*)(record_header + 1) = BIG_ENDIAN_16(TLS12);
-			*(unsigned short*)(record_header + 3) = BIG_ENDIAN_16(cipher_text_content_length);
-
-			// Calculate IV
-			// For now, we are using the Server Write IV as the CBC IV for all packets
-			// This must be random and new for each packet
-			// TODO
-			const unsigned char* IV = server_cs->cipher_state.iv;
-
-			// Calculate MAC
-			// TODO
-			// just for testing, this thing should be redesigned.
-			unsigned char mac[20] = {0}; // TODO: not 20
-			dynamic_buffer mac_message;
-			util_dynamic_buffer_new(&mac_message, 1024);
-			unsigned long long seq_number_be = BIG_ENDIAN_64(server_cs->sequence_number);
-			util_dynamic_buffer_add(&mac_message, &seq_number_be, 8);
-			unsigned char mac_tls_type = type;
-			unsigned short mac_tls_version = BIG_ENDIAN_16(TLS12);
-			unsigned short mac_tls_length = BIG_ENDIAN_16(fragment_length);
-			util_dynamic_buffer_add(&mac_message, &mac_tls_type, 1);
-			util_dynamic_buffer_add(&mac_message, &mac_tls_version, 2);
-			util_dynamic_buffer_add(&mac_message, &mac_tls_length, 2);
-			util_dynamic_buffer_add(&mac_message, fragment, fragment_length);
-			// @TODO: here we should depend on security_parameters.mac_algorithm
-			hmac(sha1, server_cs->cipher_state.mac_key, server_cs->security_parameters.mac_length,
-				mac_message.buffer, mac_message.size, mac, server_cs->security_parameters.mac_length);
-
-			int cipher_text_size = sizeof(record_header) + cipher_text_content_length;
-			unsigned char* cipher_text = malloc(cipher_text_size);
-			unsigned char* cipher_text_ptr = cipher_text;
-			memcpy(cipher_text_ptr, record_header, sizeof(record_header));
-			cipher_text_ptr += sizeof(record_header);
-			memcpy(cipher_text_ptr, IV, server_cs->security_parameters.record_iv_length);
-			cipher_text_ptr += server_cs->security_parameters.record_iv_length;
-			memcpy(cipher_text_ptr, fragment, fragment_length);
-			cipher_text_ptr += fragment_length;
-			memcpy(cipher_text_ptr, mac, server_cs->security_parameters.mac_length);
-			cipher_text_ptr += server_cs->security_parameters.mac_length;
-			memset(cipher_text_ptr, padding_length, padding_length);
-			cipher_text_ptr += padding_length;
-			cipher_text_ptr[0] = padding_length;
-
-			// Encrypt data
-			unsigned char* data_to_encrypt = cipher_text + sizeof(record_header) + server_cs->security_parameters.record_iv_length;
-			unsigned int data_to_encrypt_size = cipher_text_content_length - server_cs->security_parameters.record_iv_length;
-			assert(data_to_encrypt_size % server_cs->security_parameters.block_length == 0);
-			unsigned char* result = calloc(1, data_to_encrypt_size); 	// @todo: I think we dont need this
-			// @TODO: here we should depend on security_parameters.bulk_algorithm
-			aes_128_cbc_encrypt(data_to_encrypt, server_cs->cipher_state.enc_key, IV,
-				data_to_encrypt_size / server_cs->security_parameters.block_length, result);
-			memcpy(data_to_encrypt, result, data_to_encrypt_size);
-			rawhttps_connection_state* _server_cs = (rawhttps_connection_state*)server_cs;
-			++_server_cs->sequence_number; // FIX
-
-			*_cipher_text = cipher_text;
-			return cipher_text_size;
-		} break;
-		case CIPHER_AEAD: {
-			printf("Cipher type not supported\n");
-			return -1;
-		} break;
-	}
-
-	return -1;
+	// todo: this should be a random number and the four first bytes must be unix time
+	for (int i = 0; i < 32; ++i)
+		server_random[i] = i;
 }
 
 // receives a higher layer packet, splits the packet into several record packets and send to the client
-/*
-*
-*
-*
-*
-*
-* REFACTOR HERE
-*
-*
-*
-*
-*/
 static int send_higher_layer_packet(const rawhttps_connection_state* server_cs, const unsigned char* data, long long size,
 	protocol_type type, int connected_socket)
 {
@@ -242,29 +82,12 @@ static int send_higher_layer_packet(const rawhttps_connection_state* server_cs, 
 		long long size_to_send = MIN(RECORD_PROTOCOL_TLS_PLAIN_TEXT_MAX_SIZE, size_remaining);
 		long long buffer_position = size - size_remaining;
 
-		unsigned char* cipher_text;
-		int cipher_text_length = build_tls_cipher_text(server_cs, data + buffer_position, size_to_send, type, connected_socket, &cipher_text);
-
-		// Send record packet
-		if (send_cipher_text(cipher_text, cipher_text_length, connected_socket))
-		{
-			printf("Error sending cipher text\n");
+		if (rawhttps_record_send(server_cs, data + buffer_position, size_to_send, type, connected_socket))
 			return -1;
-		}
-
 		size_remaining -= size_to_send;
 	}
 
 	return 0;
-}
-
-// generates the random number that is sent in the SERVER_HELLO packet and it's later used to generate the master key
-// @TODO: this function must be implemented correctly
-static void server_hello_random_number_generate(unsigned char server_random[32])
-{
-	// todo: this should be a random number and the four first bytes must be unix time
-	for (int i = 0; i < 32; ++i)
-		server_random[i] = i;
 }
 
 // send to the client a new HANDSHAKE packet, with message type SERVER_HELLO
@@ -502,13 +325,19 @@ static void generate_verify_data_from_handshake_messages(const dynamic_buffer* a
 int rawhttps_tls_handshake(rawhttps_tls_state* ts, rawhttps_parser_state* ps, int connected_socket)
 {
 	tls_packet p;
+	protocol_type type;
+
 	while (1)
 	{
-		if (rawhttps_parser_parse_ssl_packet(&ts->client_connection_state, &p, ps, connected_socket, &ts->handshake_messages))
+		// Little hack: We need to force fetching a new record data, so we are able to get the protocol type!
+		if (rawhttps_parser_protocol_type_get_next(ps, connected_socket, &ts->client_connection_state, &type))
 			return -1;
-		switch (p.type)
+
+		switch (type)
 		{
 			case HANDSHAKE_PROTOCOL: {
+				if (rawhttps_parser_handshake_packet_parse(&p, ps, connected_socket, &ts->client_connection_state, &ts->handshake_messages))
+					return -1;
 				switch (p.subprotocol.hp.hh.message_type)
 				{
 					case CLIENT_HELLO_MESSAGE: {
@@ -569,6 +398,8 @@ int rawhttps_tls_handshake(rawhttps_tls_state* ts, rawhttps_parser_state* ps, in
 						generate_verify_data_from_handshake_messages(&ts->handshake_messages,
 							ts->server_connection_state.security_parameters.master_secret, verify_data);
 						handshake_finished_message_send(&ts->server_connection_state, connected_socket, verify_data);
+						ts->hanshake_completed = true;
+						return 0;
 					} break;
 					case SERVER_HELLO_MESSAGE:
 					case SERVER_CERTIFICATE_MESSAGE:
@@ -579,6 +410,8 @@ int rawhttps_tls_handshake(rawhttps_tls_state* ts, rawhttps_parser_state* ps, in
 				}
 			} break;
 			case CHANGE_CIPHER_SPEC_PROTOCOL: {
+				if (rawhttps_parser_change_cipher_spec_parse(&p, ps, connected_socket, &ts->client_connection_state))
+					return -1;
 				switch (p.subprotocol.ccsp.message) {
 					case CHANGE_CIPHER_SPEC_MESSAGE: {
 						printf("Client asked to activate encryption via CHANGE_CIPHER_SPEC message\n");
@@ -587,15 +420,41 @@ int rawhttps_tls_handshake(rawhttps_tls_state* ts, rawhttps_parser_state* ps, in
 				}
 			} break;
 			case APPLICATION_DATA_PROTOCOL: {
-				int i = 0;
-				++i;
-				unsigned char buf[] = "HTTP/1.0 200 OK\r\n"
-					"Connection: Keep-Alive\r\n"
-					"Content-Length: 11\r\n"
-					"\r\n"
-					"Hello World";
-				application_data_send(&ts->server_connection_state, connected_socket, buf, sizeof(buf) - 1);
+				printf("Application Data received before handshake was finished");
+				return -1;
 			} break;
 		}
 	}
+
+	return -1;
+}
+
+long long rawhttps_tls_read(rawhttps_tls_state* ts, rawhttps_parser_state* ps, int connected_socket,
+	unsigned char data[RECORD_PROTOCOL_TLS_PLAIN_TEXT_MAX_SIZE])
+{
+	protocol_type type;
+
+	// Little hack: We need to force fetching a new record data, so we are able to get the protocol type!
+	if (rawhttps_parser_protocol_type_get_next(ps, connected_socket, &ts->client_connection_state, &type))
+		return -1;
+
+	switch (type)
+	{
+		case HANDSHAKE_PROTOCOL: {
+			printf("Received handshake protocol inside tls_read\n");
+			return -1;
+		} break;
+		case CHANGE_CIPHER_SPEC_PROTOCOL: {
+			printf("Received change cipher spec protocol inside tls_read\n");
+			return -1;
+		} break;
+		case APPLICATION_DATA_PROTOCOL: {
+			long long bytes_written;
+			if (rawhttps_parser_application_data_parse(data, &bytes_written, ps, connected_socket, &ts->client_connection_state))
+				return -1;
+			return bytes_written;
+		} break;
+	}
+
+	return -1;
 }
