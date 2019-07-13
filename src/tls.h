@@ -6,13 +6,10 @@
 
 typedef struct
 {
-	unsigned char client_random_number[32];
-	unsigned char server_random_number[32];
-	// The premaster secret has 48 bytes when the key-exchange method is RSA! Be careful when implementing DH!
-	unsigned char pre_master_secret[48];
-	unsigned char master_secret[48];
-
-	rawhttps_crypto_data cd;
+	rawhttps_security_parameters pending_client_security_parameters;
+	rawhttps_security_parameters pending_server_security_parameters;
+	rawhttps_connection_state client_connection_state;
+	rawhttps_connection_state server_connection_state;
 	dynamic_buffer handshake_messages;
 } rawhttps_tls_state;
 

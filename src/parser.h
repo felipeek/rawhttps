@@ -17,21 +17,9 @@ typedef struct {
 	protocol_type type;
 } rawhttps_parser_state;
 
-typedef struct {
-	int encryption_enabled;
-	int decryption_enabled;
-	unsigned char client_write_mac_key[20];
-	unsigned char server_write_mac_key[20];
-	unsigned char client_write_key[16];
-	unsigned char server_write_key[16];
-	unsigned char client_write_IV[16];
-	unsigned char server_write_IV[16];
-	unsigned long long seq_number;
-} rawhttps_crypto_data;
-
 int rawhttps_parser_state_create(rawhttps_parser_state* ps);
 int rawhttps_parser_state_destroy(rawhttps_parser_state* ps);
-int rawhttps_parser_parse_ssl_packet(const rawhttps_crypto_data* cd, tls_packet* packet, rawhttps_parser_state* ps,
-	int connected_socket, dynamic_buffer* handshake_messages);
+int rawhttps_parser_parse_ssl_packet(const rawhttps_connection_state* client_connection_state, tls_packet* packet,
+	rawhttps_parser_state* ps, int connected_socket, dynamic_buffer* handshake_messages);
 
 #endif
