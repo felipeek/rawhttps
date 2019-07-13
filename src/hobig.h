@@ -26,7 +26,7 @@ int hobig_int_compare_absolute(HoBigInt* left, HoBigInt* right);
 // Arithmetic
 void               hobig_int_add(HoBigInt* dst, HoBigInt* src);
 void               hobig_int_sub(HoBigInt* dst, HoBigInt* src);
-void               hobig_int_mul(HoBigInt* dst, HoBigInt* src);
+HoBigInt           hobig_int_mul(HoBigInt* x, HoBigInt* y);
 HoBigInt_DivResult hobig_int_div(HoBigInt* dividend, HoBigInt* divisor);
 HoBigInt           hobig_int_mod_div(HoBigInt* n, HoBigInt* exp, HoBigInt* m);
 HoBigInt           hobig_int_gcd(HoBigInt* a, HoBigInt* b);

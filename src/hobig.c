@@ -9,7 +9,7 @@ typedef long long int s64;
 
 #include <stdarg.h>
 #include <assert.h>
-#include "../light_array.h"
+#include "light_array.h"
 #include "table.h"
 
 extern u64 div_word(u64 dividend_high, u64 dividend_low, u64 divisor, u64* out_remainder);
