@@ -19,9 +19,6 @@
 #define RAWHTTP_PARSER_REQUEST_HEADER_DEFAULT_CAPACITY 16
 #define RAWHTTPS_MESSAGE_BUFFER_INITIAL_SIZE 1024
 
-#define LITTLE_ENDIAN_16(x) (((unsigned short)(x)[1]) | ((unsigned short)(x)[0] << 8))
-#define LITTLE_ENDIAN_24(x) (((unsigned int)(x)[2]) | ((unsigned int)(x)[1] << 8) | ((unsigned int)(x)[0] << 16))
-
 // creates rawhttps_parser_buffer
 static int rawhttps_message_buffer_create(rawhttps_message_buffer* message_buffer)
 {
@@ -80,7 +77,7 @@ static long long rawhttps_parser_message_fetch_next_record(rawhttps_parser_state
 	}
 
 	long long size_read;
-	if ((size_read = rawhttps_record_get_data(&ps->record_buffer, connected_socket,
+	if ((size_read = rawhttps_record_get(&ps->record_buffer, connected_socket,
 		ps->message_buffer.buffer + ps->message_buffer.buffer_end, &ps->type, client_connection_state)) < 0)
 		return -1;
 	if (size_read == 0)

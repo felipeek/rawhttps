@@ -785,6 +785,7 @@ hobig_int_mod_div(HoBigInt* n, HoBigInt* exp, HoBigInt* m) {
  */
 static HoBigInt_DivResult 
 hobig_int_div_knuth(HoBigInt* u, HoBigInt* v) {
+	assert(array_length(u->value) >= array_length(v->value));
     TIME_COUNT();
     HoBigInt_DivResult result = {0};
 

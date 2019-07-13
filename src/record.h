@@ -13,6 +13,8 @@ typedef struct {
 int rawhttps_record_buffer_create(rawhttps_record_buffer* record_buffer);
 void rawhttps_record_buffer_destroy(rawhttps_record_buffer* record_buffer);
 
-long long rawhttps_record_get_data(rawhttps_record_buffer* record_buffer, int connected_socket,
+long long rawhttps_record_get(rawhttps_record_buffer* record_buffer, int connected_socket,
 	unsigned char data[RECORD_PROTOCOL_TLS_PLAIN_TEXT_MAX_SIZE], protocol_type* type, const rawhttps_connection_state* client_connection_state);
+int rawhttps_record_send(const rawhttps_connection_state* server_cs, const unsigned char* data, int data_length,
+	protocol_type type, int connected_socket);
 #endif
