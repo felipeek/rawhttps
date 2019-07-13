@@ -238,8 +238,8 @@ static int application_data_send(const rawhttps_connection_state* server_cs, int
 static int pre_master_secret_decrypt(unsigned char* result, unsigned char* encrypted, int length)
 {
 	int err = 0;
-	PrivateKey pk = asn1_parse_pem_private_key_from_file("./certificate/new_cert/key.pem", &err);
-	//PrivateKey pk = asn1_parse_pem_private_key_from_file("./certificate/key_decrypted.pem", &err);
+	//PrivateKey pk = asn1_parse_pem_private_key_from_file("./certificate/new_cert/key.pem", &err);
+	PrivateKey pk = asn1_parse_pem_private_certificate_key_from_file("./certificate/other_cert/key.pem", &err);
 	if (err) return -1;
 	HoBigInt encrypted_big_int = hobig_int_new_from_memory((char*)encrypted, length);
 	Decrypt_Data dd = decrypt_pkcs1_v1_5(pk, encrypted_big_int, &err);
@@ -360,10 +360,22 @@ int rawhttps_tls_handshake(rawhttps_tls_state* ts, rawhttps_parser_state* ps, in
 						security_parameters_set_for_cipher_suite(selected_cipher_suite, &ts->pending_client_security_parameters, CONNECTION_END_CLIENT);
 						security_parameters_set_for_cipher_suite(selected_cipher_suite, &ts->pending_server_security_parameters, CONNECTION_END_SERVER);
 
+						#if 1
+						int err = 0;
+						RSA_Certificate cert = asn1_parse_pem_certificate_from_file("./certificate/other_cert/cert.pem", err);
+						if (err != 0) {
+							printf("error parsing certificate\n");
+							return -1;
+						}
+						handshake_server_certificate_message_send(&ts->server_connection_state, connected_socket, cert.raw.data,
+							cert.raw.length, &ts->handshake_messages);
+						#endif
+						#if 0
 						// @TODO: Certs should not be hardcoded
 						int cert_size;
 						unsigned char* cert = util_file_to_memory("./certificate/new_cert/cert.bin", &cert_size);
 						handshake_server_certificate_message_send(&ts->server_connection_state, connected_socket, cert, cert_size, &ts->handshake_messages);
+						#endif
 						handshake_server_hello_done_message_send(&ts->server_connection_state, connected_socket, &ts->handshake_messages);
 					} break;
 					case CLIENT_KEY_EXCHANGE_MESSAGE: {
