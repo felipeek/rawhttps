@@ -1,9 +1,23 @@
 #include "hobig.h"
 
+typedef int bool;
+typedef unsigned char u8;
+typedef unsigned long long int u64;
+typedef long long int s64;
+#define true 1
+#define false 0
+
 #include <stdarg.h>
 #include <assert.h>
-#include <light_array.h>
+#include "light_array.h"
 #include "table.h"
+
+extern u64 div_word(u64 dividend_high, u64 dividend_low, u64 divisor, u64* out_remainder);
+extern u64 mul_word(u64 val1, u64 val2, u64* higher);
+extern u64 add_u64(u64 x, u64 y, u64 carry, u64* result);
+extern u64 sub_u64(u64 x, u64 y, u64 carry, u64* result);
+extern u64 random_integer(u64 min, u64 max);
+extern u64 random_64bit_integer();
 
 #if defined(__linux__)
 #include <time.h>
@@ -37,7 +51,7 @@ typedef enum {
 static double elapsed_times[64];
 static int    execution_count[64];
 
-#define COLLECT_TIMES 0
+#define COLLECT_TIMES 1
 
 #if COLLECT_TIMES
 #define TIME_COUNT() double time_count_start = os_time_us()
@@ -64,6 +78,12 @@ hobig_int_new(u64 v) {
     return result;
 }
 
+HoBigInt
+hobig_int_make(u64 n) {
+    HoBigInt result = {0, array_new_len(u64, n) };
+    return result;
+}
+
 void
 hobig_free(HoBigInt v) {
     if(v.value) array_free(v.value);
@@ -71,7 +91,7 @@ hobig_free(HoBigInt v) {
 
 static void 
 print_number(unsigned char* num, int length) {
-    boolean seen_number = false;
+    bool seen_number = false;
     for(int i = length-1; i >= 0; --i) {
         if(num[i] == 0 && !seen_number)
             continue;
@@ -80,6 +100,11 @@ print_number(unsigned char* num, int length) {
         printf("%d", num[i]);
     }
     if(!seen_number) printf("0");
+}
+
+int
+hobig_int_bitcount(HoBigInt* v) {
+    return (int)(array_length(v->value) * sizeof(*v->value) * 8);
 }
 
 u64 bigendian_word(u64 v) {
@@ -103,6 +128,9 @@ hobig_int_new_from_memory(const char* m, int length) {
 
     int arr_length = (length + sizeof(u64) - 1) / sizeof(u64);
     result.value = array_new_len(u64, arr_length);
+
+    int block_count = length / sizeof(u64);
+    int rest = length % sizeof(u64);
 
     int i = length;
 	for (int k = 0; i >= sizeof(u64); k++) {
@@ -166,6 +194,21 @@ hobig_int_print(HoBigInt n) {
 
     free(result);
     free(buffer);
+}
+
+static void 
+big_gen_pow2(int p, u8* buffer, int length) {
+    if(length == 0) return;
+    buffer[0] = 1;
+    for(int i = 0; i < p; ++i) {
+        u8 carry = 0;
+        for(int i = 0; i < length-1; ++i) {
+            u8 a = buffer[i];
+            u8 b = buffer[i];
+            buffer[i] = mult_table[a][b][carry][0]; // this is the result
+            carry = mult_table[a][b][carry][1];
+        }
+    }
 }
 
 HoBigInt
@@ -281,6 +324,29 @@ hobig_int_compare_absolute(HoBigInt* left, HoBigInt* right) {
 
 void
 hobig_int_sub(HoBigInt* dst, HoBigInt* src);
+
+static u64 
+add_hobig_slice(u64* z, u64 zlen, u64* x, HoBigInt y) {
+    u64 c = 0;
+    for (u64 i = 0; i < zlen; ++i) {
+        c = add_u64(x[i], y.value[i], c, &z[i]);
+    }
+    return c;
+}
+
+// The resulting carry c is either 0 or 1.
+static u64 
+sub_hobig_slice(u64* z, u64 zlen, u64* x, HoBigInt y) {
+    u64 c = 0;
+    for (u64 i = 0; i < zlen; ++i) {
+        c = sub_u64(x[i], y.value[i], c, &z[i]);
+    }
+    return c;
+}
+
+int greater_than(u64 x1, u64 x2, u64 y1, u64 y2) {
+	return ((x1 > y1) || (x1 == y1 && x2 > y2));
+}
 
 void 
 hobig_int_add(HoBigInt* dst, HoBigInt* src) {
@@ -451,42 +517,54 @@ hobig_int_mul_pow10(HoBigInt* start, int p) {
     }
 }
 
-// Multiplication works by multiplying the powers of 2 i.e.: for 777
-// 777 * x => 512 * x + 256 * x + 8 * x + 1 * x
-void 
-hobig_int_mul(HoBigInt* dst, HoBigInt* src) {
+void hobig_int_normalize(HoBigInt* n) {
+    int i = 1;
+    for(; i < array_length(n->value) && n->value[array_length(n->value) - i] == 0; ++i);
+    i--;
+    array_length(n->value) -= i;
+}
+static void 
+multiply_and_add(u64 x, u64 y, u64 c, u64* rh, u64* rl) {
+    u64 res_high = mul_word(x, y, rh);
+    *rl = res_high + c;
+	if (*rl < res_high) {
+		(*rh)++;
+	}
+}
+
+u64 multiply_and_add_vector(HoBigInt z, HoBigInt x, u64 y, u64 r) {
+	u64 c = r;
+	for (int i = 0; i < array_length(z.value); ++i) {
+        multiply_and_add(x.value[i], y, c, &c, &z.value[i]);
+	}
+    return c;
+}
+HoBigInt 
+hobig_int_mul(HoBigInt* x, HoBigInt* y) {
     TIME_COUNT();
-    int free_source = 0;
-    HoBigInt s = {0};
-    if(dst == src) {
-        s = hobig_int_copy(*src);
-        src = &s;
-        free_source = 1;
-    }
+    u64      result_length = array_length(x->value) + array_length(y->value);
+    HoBigInt result = hobig_int_make(result_length);
+    array_length(result.value) = result_length;
 
-    dst->negative = (dst->negative ^ src->negative);
+	for (u64 i = 0; i < array_length(y->value); ++i) {
+        u64 d = y->value[i];
+		if (d != 0) {
+            u64 c = 0;
 
-    int word_size = sizeof(u64) * 8;
-    HoBigInt dst_copy = hobig_int_copy(*dst);
-    memset(dst->value, 0, array_length(dst->value) * sizeof(*dst->value));
-    
-    for(int k = 0; k < array_length(src->value); k++) {
-        u64 v = src->value[k];
-        for(int i = 0; i < word_size; ++i) {
-            int bit = (v >> i) & 1;
-            if(bit) {
-                hobig_int_add(dst, &dst_copy);
+            for (u64 k = 0; k < array_length(x->value); ++k) {
+                u64 h = 0, l = 0;
+                multiply_and_add(x->value[k], d, (result.value + i)[k], &h, &l);
+                c = add_u64(l, c, 0, &(result.value + i)[k]);
+                c += h;
             }
-            multiply_by_pow2(&dst_copy, 1);
-        }
-    }
-    hobig_free(dst_copy);
 
-    if(free_source) {
-        hobig_free(*src);
-    }
+            result.value[array_length(x->value) + i] = c;
+		}
+	}
+    hobig_int_normalize(&result);
 
     TIME_END(TIME_SLOT_MULTIPLY);
+	return result;
 }
 
 HoBigInt 
@@ -546,7 +624,9 @@ hobig_int_new_decimal(const char* number, unsigned int* error) {
         HoBigInt pow10val = hobig_int_copy(powers_of_ten);
 
         // Multiply by the digit value n
-        hobig_int_mul(&pow10val, &digits[n]);
+        HoBigInt rr = hobig_int_mul(&pow10val, &digits[n]);
+        hobig_free(pow10val);
+        pow10val = rr;
 
         // Sum it back to the final result
         hobig_int_add(&result, &pow10val);
@@ -571,105 +651,46 @@ hobig_int_new_decimal(const char* number, unsigned int* error) {
     return result;
 }
 
-HoBigInt_DivResult
-hobig_int_div(HoBigInt* dividend, HoBigInt* divisor) {
-    TIME_COUNT();
-    HoBigInt_DivResult result = { 0 };
+// Returns the number of leading zeros
+static int 
+hobig_int_leading_zeros_count(HoBigInt n) {
+    u64 v = n.value[array_length(n.value) - 1];
 
-    if(*divisor->value == 0) {
-        // Division by 0
-        assert(0);
+    int c = 64;
+    for(int i = 0; i < 64; ++i, --c) {
+        if(v == 0) break;
+        v >>= 1;
     }
 
-    int comparison = hobig_int_compare_absolute(dividend, divisor);
-
-    if(comparison == -1) {
-        // Dividend is smaller than divisor, quotient = 0 and remainder = dividend
-        result.quotient = hobig_int_new(0);
-        result.remainder = hobig_int_copy(*dividend);
-    } else if(comparison == 0) {
-        // Both numbers are equal, quotient is 1 and remainder is 0
-        result.quotient = hobig_int_new(1);
-        result.remainder = hobig_int_new(0);
-    } else {
-        // Perform long division since dividend > divisor
-        // 100101010 | 111101
-        HoBigInt remainder = hobig_int_new(0);
-        HoBigInt quotient = hobig_int_new(0);
-        HoBigInt one = hobig_int_new(1);
-
-        for(int k = array_length(dividend->value) - 1 ;; --k) {
-            u64 v = dividend->value[k];
-            for(int i = sizeof(*dividend->value) * 8 - 1; i >= 0; --i) {
-                multiply_by_pow2(&quotient, 1);
-                multiply_by_pow2(&remainder, 1);
-                int bit = (v >> i) & 1;
-                if(bit) {
-                    hobig_int_add(&remainder, &one);
-                }
-                int comparison = hobig_int_compare_absolute(&remainder, divisor);
-                if(comparison == 1) {
-                    // Ready to divide, quotient receives one
-                    // and divisor is subtracted from remainder 
-                    hobig_int_add(&quotient, &one);
-                    hobig_int_sub(&remainder, divisor);
-                } else if(comparison == 0) {
-                    // Division is 1 and remainder 0
-                    *remainder.value = 0;
-                    array_length(remainder.value) = 1;
-                    hobig_int_add(&quotient, &one);
-                } else {
-                    // Still not ready to divide
-                    // Put a zero in the quotient
-                }
-            }
-            if(k == 0) break;
-        }
-        result.quotient = quotient;
-        result.remainder = remainder;
-        hobig_free(one);
-    }
-
-    TIME_END(TIME_SLOT_DIVIDE);
-    return result;
+    return c;
 }
 
-HoBigInt
-hobig_int_mod_div(HoBigInt* n, HoBigInt* exp, HoBigInt* m) {
-    HoBigInt answer = hobig_int_new(1);
-    HoBigInt two = hobig_int_new(2);
+// Same as dividing by 2^shift_amt
+static void 
+hobig_int_shr(HoBigInt* v, int shift_amt) {
+    int opposite = 64 - shift_amt;
+    u64 mask = (0xffffffffffffffff << opposite);
+    v->value[0] >>= shift_amt;
 
-    HoBigInt_DivResult r = hobig_int_div(n, m);
-    HoBigInt base = r.remainder;
-    hobig_free(r.quotient);
+    for(u64 i = 1; i < array_length(v->value); ++i) {
+        u64 current = v->value[i];
+        v->value[i] >>= shift_amt;
+        v->value[i - 1] |= (mask & (current << opposite));
+    }
+}
 
-    HoBigInt e = hobig_int_copy(*exp);
-
-    int i = 0;
-	while (e.value[0] > 0) {
-		if ((e.value[0] & 1) == 1) {
-            hobig_int_mul(&answer, &base);
-            HoBigInt_DivResult r = hobig_int_div(&answer, m);
-            hobig_free(answer);
-            hobig_free(r.quotient);
-			answer = r.remainder;
-		}
-
-        // TODO(psv): better div by 2
-        HoBigInt_DivResult dr = hobig_int_div(&e, &two);
-        hobig_free(e);
-        hobig_free(dr.remainder);
-        e = dr.quotient;
-
-        hobig_int_mul(&base, &base);
-
-        HoBigInt_DivResult bb = hobig_int_div(&base, m);
-        hobig_free(bb.quotient);
-        hobig_free(base);
-        base = bb.remainder;
-	}
-
-    return answer;
+// Same as multiplying by 2^shift_amt
+static void 
+hobig_int_shl(HoBigInt* v, int shift_amt) {
+    int opposite = 64 - shift_amt;
+    u64 mask = (0xffffffffffffffff >> opposite);
+    u64 prev = 0;
+    for(u64 i = 0; i < array_length(v->value); ++i) {
+        u64 current = v->value[i];
+        v->value[i] <<= shift_amt;
+        v->value[i] |= prev;
+        prev = (current >> opposite) & mask;
+    }
 }
 
 // Use the euclidean algorithm to calculate GCD(a, b) (Greatest common divisor).
@@ -683,11 +704,6 @@ hobig_int_gcd(HoBigInt* a, HoBigInt* b) {
     }
     HoBigInt_DivResult d = hobig_int_div(a, b);
     return hobig_int_gcd(b, &d.remainder);
-}
-
-int
-hobig_int_bitcount(HoBigInt* v) {
-    return (int)(array_length(v->value) * sizeof(*v->value) * 8);
 }
 
 // Compares if a is one less than b
@@ -708,9 +724,6 @@ compare_if_one_less(HoBigInt* a, HoBigInt* b) {
     return 1;
 }
 
-extern u64 random_integer(u64 min, u64 max);
-extern u64 random_64bit_integer();
-
 HoBigInt
 hobig_random(HoBigInt* max) {
     HoBigInt r = hobig_int_copy(*max);
@@ -726,134 +739,154 @@ hobig_random(HoBigInt* max) {
     return r;
 }
 
-// Receives n-1 (even number)
-static HoBigInt
-miller_rabin_pre(HoBigInt* n, int* out_power) {
-    HoBigInt one = hobig_int_new(1);
-    HoBigInt two = hobig_int_new(2);
-    HoBigInt copy = hobig_int_copy(*n);
-    int power = 0;
-
-    while(!(copy.value[0] & 1)) {
-        // TODO(psv): optimize division by 2
-        HoBigInt_DivResult res = hobig_int_div(&copy, &two);
-        hobig_free(copy);
-        hobig_free(res.remainder);
-        copy = res.quotient;
-        power++;
-    }
-
-    hobig_free(one);
-    hobig_free(two);
-
-    *out_power = power;
-    return copy;
-}
-
-// Must be odd number
-int
-miller_rabin_probably_prime(HoBigInt* in, int k) {
-    HoBigInt one = hobig_int_new(1);
-    HoBigInt two = hobig_int_new(2);
-    HoBigInt original = hobig_int_copy(*in);
-
-    // calculate n-1
-    HoBigInt n_minus_one = hobig_int_copy(*in);
-    hobig_int_sub(&n_minus_one, &one);
-
-    int power = 0;
-    HoBigInt d = miller_rabin_pre(&n_minus_one, &power);
-
-    for(int i = 0; i < k; ++i) {
-        // 1 < a < n - 1  (1 < a < 52 where n = 53)
-        HoBigInt a = hobig_random(&n_minus_one);
-        
-        // Calculate b0 => a^m mod n
-        HoBigInt x = hobig_int_mod_div(&a, &d, &original);
-
-        // First test equal to 1
-        if( hobig_int_compare_absolute(&x, &one) == 0 ||
-            compare_if_one_less(&x, &original)) {
-            continue;
-        }
-
-        int cont = 0;
-        for(int r = 0; r < power; ++r) {
-            x = hobig_int_mod_div(&x, &two, &original);
-            if(compare_if_one_less(&x, &original)) {
-                cont = true;
-                break;
-            }
-        }
-        if(!cont) return 0;
-    }
-
-    return 1;
-}
-
-int 
-hobig_is_prime(HoBigInt* n, int k) {
-    // if it is an even number
-    if(!(n->value[0] & 1)) {
-        return 0;
-    }
-
-    // Check trivial primes
-    if(array_length(n->value) == 1) {
-        if(*n->value < 2) return 0;
-        if(*n->value == 2 || *n->value == 3 || *n->value == 5) return 1;
-    }
-
-    return miller_rabin_probably_prime(n, k);
-}
-
 HoBigInt
-hobig_random_possible_prime(int bits) {
-    HoBigInt product_small_primes = hobig_int_new(16294579238595022365ull);
-    u64 small_primes[] = { 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41, 43, 47, 53 };
+hobig_int_mod_div(HoBigInt* n, HoBigInt* exp, HoBigInt* m) {
+    HoBigInt answer = hobig_int_new(1);
+    HoBigInt two = hobig_int_new(2);
 
-    int chunk_count = bits / (sizeof(u64) * 8);
+    HoBigInt_DivResult r = hobig_int_div(n, m);
 
-    HoBigInt result = {0};
-    result.value = array_new(u64);
-    array_allocate(result.value, chunk_count);
-    array_length(result.value) = chunk_count;
+    HoBigInt base = r.remainder;
+    hobig_free(r.quotient);
 
-    while(1) {
-        for(int i = 0; i < chunk_count; ++i) {
-            result.value[i] = random_64bit_integer();
+    HoBigInt e = hobig_int_copy(*exp);
+
+	while (e.value[0] > 0) {
+		if ((e.value[0] & 1) == 1) {
+            HoBigInt nansw = hobig_int_mul(&answer, &base);
+            hobig_free(answer);
+            answer = nansw;
+            
+            HoBigInt_DivResult r = hobig_int_div(&answer, m);
+            hobig_free(r.quotient);
+			answer = r.remainder;
+		}
+
+        hobig_int_shr(&e, 1);
+
+        HoBigInt sqbase = hobig_int_mul(&base, &base);
+        hobig_free(base);
+        base = sqbase;
+
+        HoBigInt_DivResult bb = hobig_int_div(&base, m);
+        hobig_free(bb.quotient);
+        hobig_free(base);
+        base = bb.remainder;
+	}
+
+    return answer;
+}
+
+/*
+    Adapted from Golang's implementation of divLarge
+    https://golang.org/src/math/big/nat.go#L687
+
+    Knuth, Volume 2, section 4.3.1, Algorithm D.
+ */
+static HoBigInt_DivResult 
+hobig_int_div_knuth(HoBigInt* u, HoBigInt* v) {
+    TIME_COUNT();
+    HoBigInt_DivResult result = {0};
+
+	int n = (int)array_length(v->value);
+	int m = (int)array_length(u->value) - n;
+
+	// D1
+	int shift = hobig_int_leading_zeros_count(*v);
+
+	HoBigInt v0 = hobig_int_copy(*v);
+    hobig_int_shl(&v0, shift);
+
+    HoBigInt u0 = hobig_int_copy(*u);
+    array_push(u0.value, 0); // allocate 1 more word
+    hobig_int_shl(&u0, shift);
+
+    // Final quotient
+    HoBigInt q = hobig_int_make(m + 1);
+    array_length(q.value) = m + 1;
+
+    HoBigInt qhatv = hobig_int_make(n + 1);
+    array_length(qhatv.value) = n + 1;
+
+    // D2
+    u64 vn1 = v0.value[n - 1];
+
+    for (int j = m; j >= 0; --j) {
+		// D3
+		u64 qhat = 0;
+        u64 ujn = u0.value[j + n];
+		if (ujn != vn1) {
+            u64 rhat = 0;
+            qhat = div_word(ujn, u0.value[j+n-1], vn1, &rhat);
+
+			// x1 | x2 = q̂v_{n-2}
+			u64 vn2 = v0.value[n-2];
+            u64 x1 = 0;
+            u64 x2 = mul_word(qhat, vn2, &x1);
+
+			// test if q̂v_{n-2} > br̂ + u_{j+n-2}
+			u64 ujn2 = u0.value[j+n-2];
+
+            while (greater_than(x1, x2, rhat, ujn2)) {
+				qhat--;
+				u64 prevRhat = rhat;
+				rhat += vn1;
+				// v[n-1] >= 0, so this tests for overflow.
+				if (rhat < prevRhat) {
+					break;
+				}
+                x2 = mul_word(qhat, vn2, &x1);
+			}
+		}
+
+		// D4.
+        u64 prev_qhatlen = array_length(qhatv.value);
+        array_length(qhatv.value) = n;
+		qhatv.value[n] = multiply_and_add_vector(qhatv, v0, qhat, 0);
+        array_length(qhatv.value) = prev_qhatlen;
+
+        u64 c = sub_hobig_slice(u0.value + j, array_length(qhatv.value), u0.value + j, qhatv);
+		if (c != 0) {
+            c = add_hobig_slice(u0.value + j, n, u0.value + j, v0);
+			u0.value[j+n] += c;
+			qhat--;
+		}
+
+		q.value[j] = qhat;
+	}
+
+    hobig_free(qhatv);
+
+    // normalize q
+    hobig_int_normalize(&q);
+
+    hobig_int_shr(&u0, shift);
+    hobig_int_normalize(&u0);
+
+    result.quotient = q;
+    result.remainder = u0;
+
+    TIME_END(TIME_SLOT_DIVIDE);
+    return result;
+}
+
+HoBigInt_DivResult 
+hobig_int_div(HoBigInt* u, HoBigInt* v) {
+    HoBigInt_DivResult result = {0};
+
+    switch(hobig_int_compare_absolute(u, v)) {
+        case -1: {
+            result.quotient = hobig_int_new(0);
+            result.remainder = hobig_int_copy(*u);
+            return result;
         }
-        
-        *result.value |= 1; // make sure is odd
-
-        HoBigInt_DivResult d = hobig_int_div(&result, &product_small_primes);
-        u64 mod = *d.remainder.value;
-        hobig_free(d.quotient);
-        hobig_free(d.remainder);
-
-        HoBigInt big_delta = hobig_int_new(0);
-        for (u64 delta = 0; delta < 1<<20; delta += 2) {
-            u64 m = mod + delta;
-            int cont = 0;
-            for (int k = 0; k < sizeof(small_primes) / sizeof(*small_primes); ++k) {
-                if (m % small_primes[k] == 0 && (bits > 6 || m != small_primes[k])) {
-                    cont = 1;
-                    break;
-                }
-            }
-            if(cont) continue;
-
-            if (delta > 0) {
-                *big_delta.value = delta;
-                hobig_int_add(&result, &big_delta);
-            }
-            break;
+        case 0: {
+            result.quotient = hobig_int_new(1);
+            result.remainder = hobig_int_new(0);
+            return result;
         }
-
-        if(miller_rabin_probably_prime(&result, 20)) {
-            break;
-        }
+        case 1: break;
     }
 
-    return result;
+    return hobig_int_div_knuth(u, v);
 }
