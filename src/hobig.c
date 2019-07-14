@@ -102,9 +102,25 @@ print_number(unsigned char* num, int length) {
     if(!seen_number) printf("0");
 }
 
+// Returns the number of leading zeros
+static int 
+hobig_int_leading_zeros_count(HoBigInt n) {
+    u64 v = n.value[array_length(n.value) - 1];
+
+    int c = 64;
+    for(int i = 0; i < 64; ++i, --c) {
+        if(v == 0) break;
+        v >>= 1;
+    }
+
+    return c;
+}
+
 int
 hobig_int_bitcount(HoBigInt* v) {
-    return (int)(array_length(v->value) * sizeof(*v->value) * 8);
+    int word_bit_count =  (int)(array_length(v->value) * sizeof(*v->value) * 8);
+
+    return word_bit_count - hobig_int_leading_zeros_count(*v);
 }
 
 u64 bigendian_word(u64 v) {
@@ -524,6 +540,7 @@ u64 multiply_and_add_vector(HoBigInt z, HoBigInt x, u64 y, u64 r) {
 HoBigInt 
 hobig_int_mul(HoBigInt* x, HoBigInt* y) {
     TIME_COUNT();
+
     u64      result_length = array_length(x->value) + array_length(y->value);
     HoBigInt result = hobig_int_make(result_length);
     array_length(result.value) = result_length;
@@ -633,23 +650,10 @@ hobig_int_new_decimal(const char* number, unsigned int* error) {
     return result;
 }
 
-// Returns the number of leading zeros
-static int 
-hobig_int_leading_zeros_count(HoBigInt n) {
-    u64 v = n.value[array_length(n.value) - 1];
-
-    int c = 64;
-    for(int i = 0; i < 64; ++i, --c) {
-        if(v == 0) break;
-        v >>= 1;
-    }
-
-    return c;
-}
-
 // Same as dividing by 2^shift_amt
 static void 
 hobig_int_shr(HoBigInt* v, int shift_amt) {
+    if(shift_amt == 0) return;
     int opposite = 64 - shift_amt;
     u64 mask = (0xffffffffffffffff << opposite);
     v->value[0] >>= shift_amt;
@@ -664,6 +668,7 @@ hobig_int_shr(HoBigInt* v, int shift_amt) {
 // Same as multiplying by 2^shift_amt
 static void 
 hobig_int_shl(HoBigInt* v, int shift_amt) {
+    if(shift_amt == 0) return;
     int opposite = 64 - shift_amt;
     u64 mask = (0xffffffffffffffff >> opposite);
     u64 prev = 0;
@@ -686,6 +691,23 @@ hobig_int_gcd(HoBigInt* a, HoBigInt* b) {
     }
     HoBigInt_DivResult d = hobig_int_div(a, b);
     return hobig_int_gcd(b, &d.remainder);
+}
+
+HoBigInt
+hobig_random_bitcount(int nbits) {
+    HoBigInt result = {0};
+    if(nbits == 0) return hobig_int_new(0);
+
+    int blocks = ((nbits + nbits % 64) / 64);
+    u64 mask = 0xffffffffffffffff >> (64 - (nbits % 64));
+
+    result = hobig_int_make(blocks);
+    array_length(result.value) = blocks;
+    for(int i = 0; i < blocks; ++i) {
+        result.value[i] = random_64bit_integer();
+    }
+    result.value[blocks - 1] &= mask;
+    return result;
 }
 
 HoBigInt
@@ -833,16 +855,6 @@ hobig_int_div_knuth(HoBigInt* u, HoBigInt* v) {
     return result;
 }
 
-
-/* bug
-n:
-3498583697396045929521530877294658172929672028366635886651878300231171458955716406978353344141777843620007274024816664404408726333529655073078832344467478
-exp:
-4519843160463288062918580025639808781878043374837035832900655314965160862826437244686004073001718754779907361563410459626224219701665822904210168969401281
-m:
-10110484033288364727267901533905254561333242154983098415619163334591840653527959301220249016169719055550213534233664016249007347777310773318616485806202271
-*/
-#if 0
 HoBigInt_DivResult 
 hobig_int_div(HoBigInt* u, HoBigInt* v) {
     HoBigInt_DivResult result = {0};
@@ -863,69 +875,3 @@ hobig_int_div(HoBigInt* u, HoBigInt* v) {
 
     return hobig_int_div_knuth(u, v);
 }
-#endif
-
-#if 1
-HoBigInt_DivResult 
-hobig_int_div(HoBigInt* dividend, HoBigInt* divisor) {
-	TIME_COUNT();
-    HoBigInt_DivResult result = { 0 };
-
-    if(*divisor->value == 0) {
-        // Division by 0
-        assert(0);
-    }
-
-    int comparison = hobig_int_compare_absolute(dividend, divisor);
-
-    if(comparison == -1) {
-        // Dividend is smaller than divisor, quotient = 0 and remainder = dividend
-        result.quotient = hobig_int_new(0);
-        result.remainder = hobig_int_copy(*dividend);
-    } else if(comparison == 0) {
-        // Both numbers are equal, quotient is 1 and remainder is 0
-        result.quotient = hobig_int_new(1);
-        result.remainder = hobig_int_new(0);
-    } else {
-        // Perform long division since dividend > divisor
-        // 100101010 | 111101
-        HoBigInt remainder = hobig_int_new(0);
-        HoBigInt quotient = hobig_int_new(0);
-        HoBigInt one = hobig_int_new(1);
-
-        for(int k = array_length(dividend->value) - 1 ;; --k) {
-            u64 v = dividend->value[k];
-            for(int i = sizeof(*dividend->value) * 8 - 1; i >= 0; --i) {
-                multiply_by_pow2(&quotient, 1);
-                multiply_by_pow2(&remainder, 1);
-                int bit = (v >> i) & 1;
-                if(bit) {
-                    hobig_int_add(&remainder, &one);
-                }
-                int comparison = hobig_int_compare_absolute(&remainder, divisor);
-                if(comparison == 1) {
-                    // Ready to divide, quotient receives one
-                    // and divisor is subtracted from remainder 
-                    hobig_int_add(&quotient, &one);
-                    hobig_int_sub(&remainder, divisor);
-                } else if(comparison == 0) {
-                    // Division is 1 and remainder 0
-                    *remainder.value = 0;
-                    array_length(remainder.value) = 1;
-                    hobig_int_add(&quotient, &one);
-                } else {
-                    // Still not ready to divide
-                    // Put a zero in the quotient
-                }
-            }
-            if(k == 0) break;
-        }
-        result.quotient = quotient;
-        result.remainder = remainder;
-        hobig_free(one);
-    }
-
-    TIME_END(TIME_SLOT_DIVIDE);
-    return result;
-}
-#endif

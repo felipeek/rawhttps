@@ -32,7 +32,9 @@ HoBigInt           hobig_int_mod_div(HoBigInt* n, HoBigInt* exp, HoBigInt* m);
 HoBigInt           hobig_int_gcd(HoBigInt* a, HoBigInt* b);
 
 // Misc
-int hobig_int_bitcount(HoBigInt* v);
+int      hobig_int_bitcount(HoBigInt* v);
+HoBigInt hobig_random(HoBigInt* max);
+HoBigInt hobig_random_bitcount(int nbits);
 
 // Print
 void hobig_int_print(HoBigInt n);
