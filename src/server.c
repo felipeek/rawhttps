@@ -22,6 +22,9 @@
 #include <unistd.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include "http/http_parser.h"
+
+#define RAWHTTP_SERVER_MAX_QUEUE_SERVER_PENDING_CONNECTIONS 5
 
 typedef struct {
 	rawhttps_server* server;
@@ -29,10 +32,11 @@ typedef struct {
 	int connected_socket;
 } rawhttps_connection;
 
-#define RAWHTTP_SERVER_MAX_QUEUE_SERVER_PENDING_CONNECTIONS 5
-
 int rawhttps_server_init(rawhttps_server* server, int port)
 {
+	if (rawhttp_handler_tree_create(&server->handlers, 16 /* change me */))
+		return -1;
+
 	server->sockfd = socket(AF_INET, SOCK_STREAM, 0);
 
 	// workaround for dev purposes (avoiding error binding socket: Address already in use)
@@ -74,6 +78,7 @@ int rawhttps_server_destroy(rawhttps_server* server)
 	{
 		shutdown(server->sockfd, SHUT_RDWR);
 		close(server->sockfd);
+		rawhttp_handler_tree_destroy(&server->handlers);
 	}
 
 	return 0;
@@ -84,38 +89,64 @@ static void* rawhttps_server_new_connection_callback(void* arg)
 	rawhttps_connection* connection = (rawhttps_connection*)arg;
 	char* client_ip_ascii = inet_ntoa(connection->client_address.sin_addr);
 
-	rawhttps_parser_state ps;
 	rawhttps_tls_state ts;
-	if (rawhttps_parser_state_create(&ps))
-		return NULL;
 	if (rawhttps_tls_state_create(&ts))
 		return NULL;
-	if (rawhttps_tls_handshake(&ts, &ps, connection->connected_socket))
+	if (rawhttps_tls_handshake(&ts, connection->connected_socket))
 	{
 		printf("Error in TLS handshake\n");
 		printf("Connection with client %s will be destroyed\n", client_ip_ascii);
-		rawhttps_parser_state_destroy(&ps);
+		rawhttps_tls_state_destroy(&ts);
 		return NULL;
 	}
 
-	printf("TODO now...\n");
-
-	while (1)
+	rawhttps_http_parser_state hps;
+	rawhttp_request request;
+	rawhttp_http_parser_state_create(&hps, &ts);
+	if (rawhttp_parser_parse(&hps, &request, connection->connected_socket))
 	{
-		unsigned char data[RECORD_PROTOCOL_TLS_PLAIN_TEXT_MAX_SIZE];
-		long long data_read;
-		data_read = rawhttps_tls_read(&ts, &ps, connection->connected_socket, data);
-
-		if (data_read == -1)
-		{
-			printf("Error reading application data!");
-			return NULL;
-		}
-		printf("Got packet:\n");
-		printf("%.*s", data_read, data);
+		printf("Error parsing HTTP packet. Connection was dropped or syntax was invalid");
+		printf("Connection with client %s will be destroyed", client_ip_ascii);
+		return NULL;
 	}
 
-	rawhttps_parser_state_destroy(&ps);
+	const rawhttp_server_handler* handler = rawhttp_handler_tree_get(&connection->server->handlers, request.uri, request.uri_size);
+	if (handler)
+	{
+		printf("calling handler for uri %.*s\n", request.uri_size, request.uri);
+		rawhttp_response response;
+		if (rawhttp_response_new(&response))
+		{
+			printf("Error creating new rawhttp_response");
+			rawhttp_header_destroy(&request.header);
+			rawhttp_http_parser_state_destroy(&hps);
+			rawhttps_tls_state_destroy(&ts);
+			return NULL;
+		}
+		rawhttp_response_connection_information rci;
+		rci.connected_socket = connection->connected_socket;
+		rci.ts = &ts;
+		handler->handle(&rci, &request, &response);
+		if (rawhttp_response_destroy(&response))
+		{
+			printf("Error destroying rawhttp_response");
+			rawhttp_header_destroy(&request.header);
+			rawhttp_http_parser_state_destroy(&hps);
+			rawhttps_tls_state_destroy(&ts);
+			return NULL;
+		}
+	}
+	else
+	{
+		char buf[] = "HTTP/1.0 404 Not Found\n"
+			"Connection: Keep-Alive\n"
+			"Content-Length: 9\n"
+			"\n"
+			"404 Error";
+		write(request.connected_socket, buf, sizeof(buf) - 1);
+	}
+	rawhttp_header_destroy(&request.header);
+	rawhttp_http_parser_state_destroy(&hps);
 	rawhttps_tls_state_destroy(&ts);
 
 	close(connection->connected_socket);
@@ -152,4 +183,10 @@ int rawhttps_server_listen(rawhttps_server* server)
 	}
 
 	return 0;
+}
+
+
+int rawhttp_server_register_handle(rawhttps_server* server, const char* pattern, long long pattern_size, rawhttp_server_handle_func handle)
+{
+	return rawhttp_handler_tree_put(&server->handlers, pattern, pattern_size, handle);
 }

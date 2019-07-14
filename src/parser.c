@@ -48,11 +48,10 @@ int rawhttps_parser_state_create(rawhttps_parser_state* ps)
 }
 
 // destroys rawhttps_parser_state
-int rawhttps_parser_state_destroy(rawhttps_parser_state* ps)
+void rawhttps_parser_state_destroy(rawhttps_parser_state* ps)
 {
 	rawhttps_message_buffer_destroy(&ps->message_buffer);
 	rawhttps_record_buffer_destroy(&ps->record_buffer);
-	return 0;
 }
 
 // clear the phb buffer.

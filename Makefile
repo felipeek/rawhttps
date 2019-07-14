@@ -8,7 +8,7 @@ BIN = ssltests
 BUILD_DIR = ./bin
 
 # List of all .c source files.
-C = $(wildcard ./src/*.c)
+C = $(wildcard ./src/*.c) $(wildcard ./src/http/*.c)
 ASM = $(wildcard ./src/*.asm)
 
 # All .o files go to build dir.

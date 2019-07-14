@@ -18,7 +18,7 @@ typedef struct {
 } rawhttps_parser_state;
 
 int rawhttps_parser_state_create(rawhttps_parser_state* ps);
-int rawhttps_parser_state_destroy(rawhttps_parser_state* ps);
+void rawhttps_parser_state_destroy(rawhttps_parser_state* ps);
 int rawhttps_parser_change_cipher_spec_parse(tls_packet* packet, rawhttps_parser_state* ps, int connected_socket,
 	rawhttps_connection_state* client_cs);
 int rawhttps_parser_handshake_packet_parse(tls_packet* packet, rawhttps_parser_state* ps, int connected_socket,

@@ -55,12 +55,14 @@ int rawhttps_tls_state_create(rawhttps_tls_state* ts)
 	security_parameters_set_for_cipher_suite(TLS_NULL_WITH_NULL_NULL, &ts->pending_client_security_parameters, CONNECTION_END_CLIENT);
 	security_parameters_set_for_cipher_suite(TLS_NULL_WITH_NULL_NULL, &ts->pending_server_security_parameters, CONNECTION_END_SERVER);
 	util_dynamic_buffer_new(&ts->handshake_messages, 10 * 1024 /* @TODO: changeme */);
+	if (rawhttps_parser_state_create(&ts->ps)) return -1;
 	return 0;
 }
 
 void rawhttps_tls_state_destroy(rawhttps_tls_state* ts)
 {
 	util_dynamic_buffer_free(&ts->handshake_messages);
+	rawhttps_parser_state_destroy(&ts->ps);
 }
 
 // generates the random number that is sent in the SERVER_HELLO packet and it's later used to generate the master key
@@ -238,8 +240,8 @@ static int application_data_send(const rawhttps_connection_state* server_cs, int
 static int pre_master_secret_decrypt(unsigned char* result, unsigned char* encrypted, int length)
 {
 	int err = 0;
-	//PrivateKey pk = asn1_parse_pem_private_key_from_file("./certificate/new_cert/key.pem", &err);
-	PrivateKey pk = asn1_parse_pem_private_certificate_key_from_file("./certificate/other_cert/key.pem", &err);
+	PrivateKey pk = asn1_parse_pem_private_key_from_file("./certificate/new_cert/key.pem", &err);
+	//PrivateKey pk = asn1_parse_pem_private_certificate_key_from_file("./certificate/other_cert/key.pem", &err);
 	if (err) return -1;
 	HoBigInt encrypted_big_int = hobig_int_new_from_memory((char*)encrypted, length);
 	Decrypt_Data dd = decrypt_pkcs1_v1_5(pk, encrypted_big_int, &err);
@@ -322,7 +324,7 @@ static void generate_verify_data_from_handshake_messages(const dynamic_buffer* a
 }
 
 // performs the TLS handshake
-int rawhttps_tls_handshake(rawhttps_tls_state* ts, rawhttps_parser_state* ps, int connected_socket)
+int rawhttps_tls_handshake(rawhttps_tls_state* ts, int connected_socket)
 {
 	tls_packet p;
 	protocol_type type;
@@ -330,13 +332,13 @@ int rawhttps_tls_handshake(rawhttps_tls_state* ts, rawhttps_parser_state* ps, in
 	while (1)
 	{
 		// Little hack: We need to force fetching a new record data, so we are able to get the protocol type!
-		if (rawhttps_parser_protocol_type_get_next(ps, connected_socket, &ts->client_connection_state, &type))
+		if (rawhttps_parser_protocol_type_get_next(&ts->ps, connected_socket, &ts->client_connection_state, &type))
 			return -1;
 
 		switch (type)
 		{
 			case HANDSHAKE_PROTOCOL: {
-				if (rawhttps_parser_handshake_packet_parse(&p, ps, connected_socket, &ts->client_connection_state, &ts->handshake_messages))
+				if (rawhttps_parser_handshake_packet_parse(&p, &ts->ps, connected_socket, &ts->client_connection_state, &ts->handshake_messages))
 					return -1;
 				switch (p.subprotocol.hp.hh.message_type)
 				{
@@ -360,7 +362,7 @@ int rawhttps_tls_handshake(rawhttps_tls_state* ts, rawhttps_parser_state* ps, in
 						security_parameters_set_for_cipher_suite(selected_cipher_suite, &ts->pending_client_security_parameters, CONNECTION_END_CLIENT);
 						security_parameters_set_for_cipher_suite(selected_cipher_suite, &ts->pending_server_security_parameters, CONNECTION_END_SERVER);
 
-						#if 1
+						#if 0
 						int err = 0;
 						RSA_Certificate cert = asn1_parse_pem_certificate_from_file("./certificate/other_cert/cert.pem", err);
 						if (err != 0) {
@@ -369,8 +371,7 @@ int rawhttps_tls_handshake(rawhttps_tls_state* ts, rawhttps_parser_state* ps, in
 						}
 						handshake_server_certificate_message_send(&ts->server_connection_state, connected_socket, cert.raw.data,
 							cert.raw.length, &ts->handshake_messages);
-						#endif
-						#if 0
+						#else
 						// @TODO: Certs should not be hardcoded
 						int cert_size;
 						unsigned char* cert = util_file_to_memory("./certificate/new_cert/cert.bin", &cert_size);
@@ -422,7 +423,7 @@ int rawhttps_tls_handshake(rawhttps_tls_state* ts, rawhttps_parser_state* ps, in
 				}
 			} break;
 			case CHANGE_CIPHER_SPEC_PROTOCOL: {
-				if (rawhttps_parser_change_cipher_spec_parse(&p, ps, connected_socket, &ts->client_connection_state))
+				if (rawhttps_parser_change_cipher_spec_parse(&p, &ts->ps, connected_socket, &ts->client_connection_state))
 					return -1;
 				switch (p.subprotocol.ccsp.message) {
 					case CHANGE_CIPHER_SPEC_MESSAGE: {
@@ -441,13 +442,13 @@ int rawhttps_tls_handshake(rawhttps_tls_state* ts, rawhttps_parser_state* ps, in
 	return -1;
 }
 
-long long rawhttps_tls_read(rawhttps_tls_state* ts, rawhttps_parser_state* ps, int connected_socket,
+long long rawhttps_tls_read(rawhttps_tls_state* ts, int connected_socket,
 	unsigned char data[RECORD_PROTOCOL_TLS_PLAIN_TEXT_MAX_SIZE])
 {
 	protocol_type type;
 
 	// Little hack: We need to force fetching a new record data, so we are able to get the protocol type!
-	if (rawhttps_parser_protocol_type_get_next(ps, connected_socket, &ts->client_connection_state, &type))
+	if (rawhttps_parser_protocol_type_get_next(&ts->ps, connected_socket, &ts->client_connection_state, &type))
 		return -1;
 
 	switch (type)
@@ -462,11 +463,17 @@ long long rawhttps_tls_read(rawhttps_tls_state* ts, rawhttps_parser_state* ps, i
 		} break;
 		case APPLICATION_DATA_PROTOCOL: {
 			long long bytes_written;
-			if (rawhttps_parser_application_data_parse(data, &bytes_written, ps, connected_socket, &ts->client_connection_state))
+			if (rawhttps_parser_application_data_parse(data, &bytes_written, &ts->ps, connected_socket, &ts->client_connection_state))
 				return -1;
 			return bytes_written;
 		} break;
 	}
 
 	return -1;
+}
+
+long long rawhttps_tls_write(rawhttps_tls_state* ts, int connected_socket,
+	unsigned char* data, long long count)
+{
+	return application_data_send(&ts->server_connection_state, connected_socket, data, count);
 }

@@ -1,0 +1,15 @@
+#ifndef RAWHTTPS_HTTP_H
+#define RAWHTTPS_HTTP_H
+typedef enum
+{
+	HTTP_GET,
+	HTTP_HEAD,
+	HTTP_POST,
+	HTTP_PUT,
+	HTTP_DELETE,
+	HTTP_TRACE,
+	HTTP_OPTIONS,
+	HTTP_CONNECT,
+	HTTP_PATCH
+} rawhttp_method;
+#endif
