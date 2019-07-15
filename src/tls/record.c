@@ -8,9 +8,9 @@
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <errno.h>
-#include "aes_cbc.h"
-#include "util.h"
-#include "crypto_hashes.h"
+#include "crypto/aes_cbc.h"
+#include "../util.h"
+#include "crypto/crypto_hashes.h"
 
 #define RECORD_PARSER_CHUNK_SIZE 1024
 #define RECORD_BUFFER_INITIAL_SIZE 1024

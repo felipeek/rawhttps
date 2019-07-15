@@ -1,7 +1,7 @@
 #include "hash_table.h"
 #include "../common.h"
 #include <stdlib.h>
-	#include <string.h>
+#include <string.h>
 
 /***
  *      _    _           _       _______    _     _      

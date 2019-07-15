@@ -1,11 +1,11 @@
 #include "http_parser.h"
 #include "http.h"
 #include "http_request.h"
-#include "../record.h"
+#include "../tls/record.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <memory.h>
-#include "../tls.h"
+#include "../tls/tls.h"
 
 #define RAWHTTP_PARSER_REQUEST_HEADER_DEFAULT_CAPACITY 16
 

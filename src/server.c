@@ -10,8 +10,8 @@
  */
 
 #include "server.h"
-#include "tls.h"
-#include "parser.h"
+#include "tls/tls.h"
+#include "tls/tls_parser.h"
 #include "common.h"
 #include <netinet/tcp.h>
 #include <netinet/in.h>

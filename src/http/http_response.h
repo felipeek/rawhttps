@@ -1,7 +1,7 @@
 #ifndef RAWHTTPS_HTTP_RESPONSE_H
 #define RAWHTTPS_HTTP_RESPONSE_H
 #include <sys/types.h>
-#include "../tls.h"
+#include "../tls/tls.h"
 
 typedef struct {
 	rawhttps_tls_state* ts;

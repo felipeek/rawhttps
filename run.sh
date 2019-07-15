@@ -1,2 +1,1 @@
-#!/bin/bash
-./bin/rawhttp
+./bin/ssltests ./certificate/other_cert/cert.pem ./certificate/other_cert/key.pem

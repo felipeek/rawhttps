@@ -8,8 +8,8 @@ BIN = ssltests
 BUILD_DIR = ./bin
 
 # List of all .c source files.
-C = $(wildcard ./src/*.c) $(wildcard ./src/http/*.c)
-ASM = $(wildcard ./src/*.asm)
+C = $(wildcard ./src/*.c) $(wildcard ./src/http/*.c) $(wildcard ./src/tls/*.c) $(wildcard ./src/tls/crypto/*.c)
+ASM = $(wildcard ./src/tls/crypto/*.asm)
 
 # All .o files go to build dir.
 OBJ = $(C:%.c=$(BUILD_DIR)/%.o) $(ASM:%.asm=$(BUILD_DIR)/%.o)

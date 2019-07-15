@@ -1,5 +1,5 @@
 #pragma once
-#include "common.h"
+#include "../../common.h"
 #include "hobig.h"
 #include "asn1.h"
 typedef struct {

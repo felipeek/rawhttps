@@ -1,13 +1,13 @@
 #ifndef RAWHTTPS_TLS_H
 #define RAWHTTPS_TLS_H
-#include "parser.h"
+#include "tls_parser.h"
 #include "protocol.h"
-#include "util.h"
-#include "asn1.h"
+#include "../util.h"
+#include "crypto/asn1.h"
 
 typedef struct
 {
-	rawhttps_parser_state ps;
+	rawhttps_tls_parser_state ps;
 	rawhttps_security_parameters pending_client_security_parameters;
 	rawhttps_security_parameters pending_server_security_parameters;
 	rawhttps_connection_state client_connection_state;

@@ -1,17 +1,16 @@
 #include "tls.h"
-#include "parser.h"
-#include "util.h"
+#include "../util.h"
 #include <stdlib.h>
 #include <stdio.h>
 #include <memory.h>
 #include <assert.h>
-#include "hobig.h"
-#include "asn1.h"
-#include "pkcs1.h"
-#include "common.h"
-#include "crypto_hashes.h"
+#include "crypto/hobig.h"
+#include "crypto/asn1.h"
+#include "crypto/pkcs1.h"
+#include "../common.h"
+#include "crypto/crypto_hashes.h"
+#include "tls_sender.h"
 
-#define MIN(a,b) (((a) < (b)) ? (a) : (b))
 #define PRE_MASTER_SECRET_SIZE 48
 
 static void security_parameters_set_for_cipher_suite(cipher_suite_type cipher_suite, rawhttps_security_parameters* sp, connection_end entity)
@@ -56,7 +55,7 @@ int rawhttps_tls_state_create(rawhttps_tls_state* ts, const char* certificate_pa
 	security_parameters_set_for_cipher_suite(TLS_NULL_WITH_NULL_NULL, &ts->pending_client_security_parameters, CONNECTION_END_CLIENT);
 	security_parameters_set_for_cipher_suite(TLS_NULL_WITH_NULL_NULL, &ts->pending_server_security_parameters, CONNECTION_END_SERVER);
 	util_dynamic_buffer_new(&ts->handshake_messages, 10 * 1024 /* @TODO: changeme */);
-	if (rawhttps_parser_state_create(&ts->ps)) return -1;
+	if (rawhttps_tls_parser_state_create(&ts->ps)) return -1;
 	// @TODO(psv): function below returns error.
 	ts->certificate = asn1_parse_pem_certificate_from_file(certificate_path, 0);
 	if (err) return -1;
@@ -68,7 +67,7 @@ int rawhttps_tls_state_create(rawhttps_tls_state* ts, const char* certificate_pa
 void rawhttps_tls_state_destroy(rawhttps_tls_state* ts)
 {
 	util_dynamic_buffer_free(&ts->handshake_messages);
-	rawhttps_parser_state_destroy(&ts->ps);
+	rawhttps_tls_parser_state_destroy(&ts->ps);
 }
 
 // generates the random number that is sent in the SERVER_HELLO packet and it's later used to generate the master key
@@ -78,169 +77,6 @@ static void server_hello_random_number_generate(unsigned char server_random[32])
 	// todo: this should be a random number and the four first bytes must be unix time
 	for (int i = 0; i < 32; ++i)
 		server_random[i] = i;
-}
-
-// receives a higher layer packet, splits the packet into several record packets and send to the client
-static int send_higher_layer_packet(const rawhttps_connection_state* server_cs, const unsigned char* data, long long size,
-	protocol_type type, int connected_socket)
-{
-	long long size_remaining = size;
-	while (size_remaining > 0)
-	{
-		long long size_to_send = MIN(RECORD_PROTOCOL_TLS_PLAIN_TEXT_MAX_SIZE, size_remaining);
-		long long buffer_position = size - size_remaining;
-
-		if (rawhttps_record_send(server_cs, data + buffer_position, size_to_send, type, connected_socket))
-			return -1;
-		size_remaining -= size_to_send;
-	}
-
-	return 0;
-}
-
-// send to the client a new HANDSHAKE packet, with message type SERVER_HELLO
-static int handshake_server_hello_message_send(const rawhttps_connection_state* server_cs, int connected_socket, unsigned short selected_cipher_suite,
-	unsigned char* random_number, dynamic_buffer* handshake_messages)
-{
-	dynamic_buffer db;
-	util_dynamic_buffer_new(&db, 1024);
-
-	unsigned short extensions_length = 0;
-	unsigned char session_id_length = 0;
-	unsigned char* session_id = NULL;
-	unsigned short selected_cipher_suite_be = BIG_ENDIAN_16(selected_cipher_suite);
-	unsigned char selected_compression_method = 0;
-	unsigned short extensions_length_be = BIG_ENDIAN_16(extensions_length);
-	unsigned char* extensions = BIG_ENDIAN_16(0);
-
-	unsigned char message_type = SERVER_HELLO_MESSAGE;
-	unsigned int message_length_be = BIG_ENDIAN_24(2 + 32 + 1 + session_id_length + 2 + 1 + 2 + extensions_length);
-	unsigned short ssl_version_be = BIG_ENDIAN_16(TLS12);
-
-	util_dynamic_buffer_add(&db, &message_type, 1);						// Message Type (1 Byte)
-	util_dynamic_buffer_add(&db, &message_length_be, 3);				// Message Length (3 Bytes) [PLACEHOLDER]
-	util_dynamic_buffer_add(&db, &ssl_version_be, 2);					// SSL Version (2 Bytes)
-	util_dynamic_buffer_add(&db, random_number, 32);					// Random Number (32 Bytes)
-	util_dynamic_buffer_add(&db, &session_id_length, 1);				// Session ID Length (1 Byte)
-	util_dynamic_buffer_add(&db, session_id, 0);						// Session ID (n Bytes)
-	util_dynamic_buffer_add(&db, &selected_cipher_suite_be, 2);			// Selected Cipher Suite (2 Bytes)
-	util_dynamic_buffer_add(&db, &selected_compression_method, 1);		// Selected Compression Method (1 Byte)
-	util_dynamic_buffer_add(&db, &extensions_length_be, 2);				// Extensions Length (2 Bytes)
-	util_dynamic_buffer_add(&db, extensions, 0);						// Extensions (n Bytes)
-
-	// We could even use the same dynamic buffer here...
-	util_dynamic_buffer_add(handshake_messages, db.buffer, db.size);
-
-	if (send_higher_layer_packet(server_cs, db.buffer, db.size, HANDSHAKE_PROTOCOL, connected_socket))
-		return -1;
-
-	util_dynamic_buffer_free(&db);
-	return 0;
-}
-
-// send to the client a new HANDSHAKE packet, with message type SERVER_CERTIFICATE
-// for now, this function receives a single certificate!
-// @todo: support a chain of certificates
-static int handshake_server_certificate_message_send(const rawhttps_connection_state* server_cs, int connected_socket,
-	unsigned char* certificate, int certificate_size, dynamic_buffer* handshake_messages)
-{
-	dynamic_buffer db;
-	util_dynamic_buffer_new(&db, 1024);
-
-	// For now, we are hardcoding a single certificate!
-	unsigned int number_of_certificates = 1;
-	certificate_info certificates[1];
-	certificates[0].data = certificate;
-	certificates[0].size = certificate_size;
-	// -------------
-
-	unsigned int certificates_length = 0;
-	for (int i = 0; i < number_of_certificates; ++i)
-		certificates_length += certificates[i].size + 3;		// we need to add +3 because each certificate requires 3 bytes for its own length
-
-	unsigned int certificates_length_be = BIG_ENDIAN_24(certificates_length);
-	unsigned char message_type = SERVER_CERTIFICATE_MESSAGE;
-	unsigned int message_length_be = BIG_ENDIAN_24(3 + certificates_length); // initial 3 bytes are the length of all certificates + their individual lengths
-
-	util_dynamic_buffer_add(&db, &message_type, 1);						// Message Type (1 Byte)
-	util_dynamic_buffer_add(&db, &message_length_be, 3);					// Message Length (3 Bytes) [PLACEHOLDER]
-	util_dynamic_buffer_add(&db, &certificates_length_be, 3);
-	for (int i = 0; i < number_of_certificates; ++i)
-	{
-		unsigned int size = BIG_ENDIAN_24(certificates[i].size);
-		util_dynamic_buffer_add(&db, &size, 3);
-		util_dynamic_buffer_add(&db, certificates[i].data, certificates[i].size);
-	}
-
-	// We could even use the same dynamic buffer here...
-	util_dynamic_buffer_add(handshake_messages, db.buffer, db.size);
-
-	if (send_higher_layer_packet(server_cs, db.buffer, db.size, HANDSHAKE_PROTOCOL, connected_socket))
-		return -1;
-
-	util_dynamic_buffer_free(&db);
-	return 0;
-}
-
-// send to the client a new HANDSHAKE packet, with message type SERVER_HELLO_DONE
-static int handshake_server_hello_done_message_send(const rawhttps_connection_state* server_cs, int connected_socket, dynamic_buffer* handshake_messages)
-{
-	dynamic_buffer db;
-	util_dynamic_buffer_new(&db, 1024);
-
-	unsigned char message_type = SERVER_HELLO_DONE_MESSAGE;
-	unsigned int message_length_be = BIG_ENDIAN_24(0);
-
-	util_dynamic_buffer_add(&db, &message_type, 1);						// Message Type (1 Byte)
-	util_dynamic_buffer_add(&db, &message_length_be, 3);					// Message Length (3 Bytes) [PLACEHOLDER]
-
-	// We could even use the same dynamic buffer here...
-	util_dynamic_buffer_add(handshake_messages, db.buffer, db.size);
-
-	if (send_higher_layer_packet(server_cs, db.buffer, db.size, HANDSHAKE_PROTOCOL, connected_socket))
-		return -1;
-
-	util_dynamic_buffer_free(&db);
-	return 0;
-}
-
-// send to the client a new CHANGE_CIPHER_SPEC message
-static int change_cipher_spec_send(const rawhttps_connection_state* server_cs, int connected_socket)
-{
-	unsigned char ccs_type = CHANGE_CIPHER_SPEC_MESSAGE;
-
-	if (send_higher_layer_packet(server_cs, (const unsigned char*)&ccs_type, sizeof(ccs_type), CHANGE_CIPHER_SPEC_PROTOCOL, connected_socket))
-		return -1;
-
-	return 0;
-}
-
-// send to the client a new CHANGE_CIPHER_SPEC message
-static int handshake_finished_message_send(const rawhttps_connection_state* server_cs, int connected_socket, unsigned char verify_data[12])
-{
-	dynamic_buffer db;
-	util_dynamic_buffer_new(&db, 16);
-
-	unsigned char message_type = FINISHED_MESSAGE;
-	unsigned int message_length_be = BIG_ENDIAN_24(12);
-
-	util_dynamic_buffer_add(&db, &message_type, 1);							// Message Type (1 Byte)
-	util_dynamic_buffer_add(&db, &message_length_be, 3);					// Message Length (3 Bytes)
-	util_dynamic_buffer_add(&db, verify_data, 12);							// Verify Data (12 Bytes)
-
-	if (send_higher_layer_packet(server_cs, db.buffer, db.size, HANDSHAKE_PROTOCOL, connected_socket))
-		return -1;
-
-	return 0;
-}
-
-static int application_data_send(const rawhttps_connection_state* server_cs, int connected_socket,
-	unsigned char* content, long long content_length)
-{
-	if (send_higher_layer_packet(server_cs, content, content_length, APPLICATION_DATA_PROTOCOL, connected_socket))
-		return -1;
-
-	return 0;
 }
 
 static int pre_master_secret_decrypt(PrivateKey* pk, unsigned char* result, unsigned char* encrypted, int length)
@@ -254,7 +90,7 @@ static int pre_master_secret_decrypt(PrivateKey* pk, unsigned char* result, unsi
 	return 0;
 }
 
-static void rsa_generate_master_secret(unsigned char pre_master_secret[PRE_MASTER_SECRET_SIZE], unsigned char client_random[CLIENT_RANDOM_SIZE],
+static void rsa_master_secret_generate(unsigned char pre_master_secret[PRE_MASTER_SECRET_SIZE], unsigned char client_random[CLIENT_RANDOM_SIZE],
 	unsigned char server_random[SERVER_RANDOM_SIZE], unsigned char master_secret[MASTER_SECRET_SIZE])
 {
 	unsigned char seed[CLIENT_RANDOM_SIZE + SERVER_RANDOM_SIZE];
@@ -268,7 +104,7 @@ static void rsa_generate_master_secret(unsigned char pre_master_secret[PRE_MASTE
 		CLIENT_RANDOM_SIZE + SERVER_RANDOM_SIZE, master_secret, MASTER_SECRET_SIZE);
 }
 
-static void generate_connection_state_from_security_parameters(const rawhttps_security_parameters* sp, rawhttps_connection_state* cs)
+static void connection_state_from_security_parameters_generate(const rawhttps_security_parameters* sp, rawhttps_connection_state* cs)
 {
 	unsigned char seed[CLIENT_RANDOM_SIZE + SERVER_RANDOM_SIZE];
 	memcpy(seed, sp->server_random, SERVER_RANDOM_SIZE);
@@ -303,19 +139,19 @@ static void generate_connection_state_from_security_parameters(const rawhttps_se
 	cs->sequence_number = 0;
 }
 
-static void apply_pending_client_cipher(rawhttps_tls_state* ts)
+static void pending_client_cipher_apply(rawhttps_tls_state* ts)
 {
-	generate_connection_state_from_security_parameters(&ts->pending_client_security_parameters, &ts->client_connection_state);
+	connection_state_from_security_parameters_generate(&ts->pending_client_security_parameters, &ts->client_connection_state);
 	security_parameters_set_for_cipher_suite(TLS_NULL_WITH_NULL_NULL, &ts->pending_client_security_parameters, CONNECTION_END_CLIENT);
 }
 
-static void apply_pending_server_cipher(rawhttps_tls_state* ts)
+static void pending_server_cipher_apply(rawhttps_tls_state* ts)
 {
-	generate_connection_state_from_security_parameters(&ts->pending_server_security_parameters, &ts->server_connection_state);
+	connection_state_from_security_parameters_generate(&ts->pending_server_security_parameters, &ts->server_connection_state);
 	security_parameters_set_for_cipher_suite(TLS_NULL_WITH_NULL_NULL, &ts->pending_server_security_parameters, CONNECTION_END_SERVER);
 }
 
-static void generate_verify_data_from_handshake_messages(const dynamic_buffer* all_handshake_messages, unsigned char master_secret[MASTER_SECRET_SIZE],
+static void verify_data_generate(const dynamic_buffer* all_handshake_messages, unsigned char master_secret[MASTER_SECRET_SIZE],
 	unsigned char verify_data[12])
 {
 	// @TODO: check these hardcoded lengths and create constants if possible
@@ -335,13 +171,13 @@ int rawhttps_tls_handshake(rawhttps_tls_state* ts, int connected_socket)
 	while (1)
 	{
 		// Little hack: We need to force fetching a new record data, so we are able to get the protocol type!
-		if (rawhttps_parser_protocol_type_get_next(&ts->ps, connected_socket, &ts->client_connection_state, &type))
+		if (rawhttps_tls_parser_protocol_type_get_next(&ts->ps, connected_socket, &ts->client_connection_state, &type))
 			return -1;
 
 		switch (type)
 		{
 			case HANDSHAKE_PROTOCOL: {
-				if (rawhttps_parser_handshake_packet_parse(&p, &ts->ps, connected_socket, &ts->client_connection_state, &ts->handshake_messages))
+				if (rawhttps_tls_parser_handshake_packet_parse(&p, &ts->ps, connected_socket, &ts->client_connection_state, &ts->handshake_messages))
 					return -1;
 				switch (p.subprotocol.hp.hh.message_type)
 				{
@@ -360,13 +196,14 @@ int rawhttps_tls_handshake(rawhttps_tls_state* ts, int connected_socket)
 						memcpy(ts->pending_server_security_parameters.server_random, server_random, SERVER_RANDOM_SIZE);
 						printf("Printing server random number...\n");
 						util_buffer_print_hex(server_random, (long long)CLIENT_RANDOM_SIZE);
-						handshake_server_hello_message_send(&ts->server_connection_state, connected_socket, selected_cipher_suite,
-							server_random, &ts->handshake_messages);
+						rawhttps_tls_sender_handshake_server_hello_message_send(&ts->server_connection_state, connected_socket,
+							selected_cipher_suite, server_random, &ts->handshake_messages);
 						security_parameters_set_for_cipher_suite(selected_cipher_suite, &ts->pending_client_security_parameters, CONNECTION_END_CLIENT);
 						security_parameters_set_for_cipher_suite(selected_cipher_suite, &ts->pending_server_security_parameters, CONNECTION_END_SERVER);
-						handshake_server_certificate_message_send(&ts->server_connection_state, connected_socket, ts->certificate.raw.data,
-							ts->certificate.raw.length, &ts->handshake_messages);
-						handshake_server_hello_done_message_send(&ts->server_connection_state, connected_socket, &ts->handshake_messages);
+						rawhttps_tls_sender_handshake_server_certificate_message_send(&ts->server_connection_state, connected_socket,
+							ts->certificate.raw.data, ts->certificate.raw.length, &ts->handshake_messages);
+						rawhttps_tls_sender_handshake_server_hello_done_message_send(&ts->server_connection_state, connected_socket,
+							&ts->handshake_messages);
 					} break;
 					case CLIENT_KEY_EXCHANGE_MESSAGE: {
 						unsigned char pre_master_secret[PRE_MASTER_SECRET_SIZE];
@@ -382,7 +219,7 @@ int rawhttps_tls_handshake(rawhttps_tls_state* ts, int connected_socket)
 
 						// client_random and server_random should be the same for both client_security_params and server_security_params...
 						// so it should not matter which security_parameter we pick (from client_connection_state or server_connection_state)
-						rsa_generate_master_secret(pre_master_secret, ts->pending_client_security_parameters.client_random,
+						rsa_master_secret_generate(pre_master_secret, ts->pending_client_security_parameters.client_random,
 							ts->pending_client_security_parameters.server_random, master_secret);
 						memcpy(ts->pending_client_security_parameters.master_secret, master_secret, MASTER_SECRET_SIZE);
 						memcpy(ts->pending_server_security_parameters.master_secret, master_secret, MASTER_SECRET_SIZE);
@@ -393,13 +230,13 @@ int rawhttps_tls_handshake(rawhttps_tls_state* ts, int connected_socket)
 					case FINISHED_MESSAGE: {
 						// Here we need to check if the decryption worked!
 						// @TODO!
-						change_cipher_spec_send(&ts->server_connection_state, connected_socket);
-						apply_pending_server_cipher(ts);
+						rawhttps_tls_sender_change_cipher_spec_send(&ts->server_connection_state, connected_socket);
+						pending_server_cipher_apply(ts);
 
 						unsigned char verify_data[12];
-						generate_verify_data_from_handshake_messages(&ts->handshake_messages,
+						verify_data_generate(&ts->handshake_messages,
 							ts->server_connection_state.security_parameters.master_secret, verify_data);
-						handshake_finished_message_send(&ts->server_connection_state, connected_socket, verify_data);
+						rawhttps_tls_sender_handshake_finished_message_send(&ts->server_connection_state, connected_socket, verify_data);
 						ts->hanshake_completed = true;
 						return 0;
 					} break;
@@ -412,12 +249,12 @@ int rawhttps_tls_handshake(rawhttps_tls_state* ts, int connected_socket)
 				}
 			} break;
 			case CHANGE_CIPHER_SPEC_PROTOCOL: {
-				if (rawhttps_parser_change_cipher_spec_parse(&p, &ts->ps, connected_socket, &ts->client_connection_state))
+				if (rawhttps_tls_parser_change_cipher_spec_parse(&p, &ts->ps, connected_socket, &ts->client_connection_state))
 					return -1;
 				switch (p.subprotocol.ccsp.message) {
 					case CHANGE_CIPHER_SPEC_MESSAGE: {
 						printf("Client asked to activate encryption via CHANGE_CIPHER_SPEC message\n");
-						apply_pending_client_cipher(ts);
+						pending_client_cipher_apply(ts);
 					} break;
 				}
 			} break;
@@ -437,7 +274,7 @@ long long rawhttps_tls_read(rawhttps_tls_state* ts, int connected_socket,
 	protocol_type type;
 
 	// Little hack: We need to force fetching a new record data, so we are able to get the protocol type!
-	if (rawhttps_parser_protocol_type_get_next(&ts->ps, connected_socket, &ts->client_connection_state, &type))
+	if (rawhttps_tls_parser_protocol_type_get_next(&ts->ps, connected_socket, &ts->client_connection_state, &type))
 		return -1;
 
 	switch (type)
@@ -452,7 +289,7 @@ long long rawhttps_tls_read(rawhttps_tls_state* ts, int connected_socket,
 		} break;
 		case APPLICATION_DATA_PROTOCOL: {
 			long long bytes_written;
-			if (rawhttps_parser_application_data_parse(data, &bytes_written, &ts->ps, connected_socket, &ts->client_connection_state))
+			if (rawhttps_tls_parser_application_data_parse(data, &bytes_written, &ts->ps, connected_socket, &ts->client_connection_state))
 				return -1;
 			return bytes_written;
 		} break;
@@ -464,5 +301,5 @@ long long rawhttps_tls_read(rawhttps_tls_state* ts, int connected_socket,
 long long rawhttps_tls_write(rawhttps_tls_state* ts, int connected_socket,
 	unsigned char* data, long long count)
 {
-	return application_data_send(&ts->server_connection_state, connected_socket, data, count);
+	return rawhttps_tls_sender_application_data_send(&ts->server_connection_state, connected_socket, data, count);
 }
