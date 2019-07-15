@@ -13,7 +13,7 @@ typedef struct
 	rawhttps_connection_state client_connection_state;
 	rawhttps_connection_state server_connection_state;
 	dynamic_buffer handshake_messages;
-	int hanshake_completed;
+	int handshake_completed;
 	RSA_Certificate certificate;
 	PrivateKey private_key;
 } rawhttps_tls_state;
