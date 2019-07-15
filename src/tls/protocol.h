@@ -30,6 +30,16 @@
 #define SERVER_RANDOM_SIZE 32
 #define MASTER_SECRET_SIZE 48
 
+// The maximum size for the key material is 128 bytes (TLS 1.2)
+// ref: https://tools.ietf.org/html/rfc5246#section-6.3
+#define KEY_BLOCK_MAX_LENGTH 128
+// https://tools.ietf.org/html/rfc5246#appendix-C
+#define CIPHER_MAC_KEY_MAX_LENGTH 32	// mac_key_length
+#define CIPHER_ENC_KEY_MAX_LENGTH 32	// Key Material
+#define CIPHER_IV_MAX_LENGTH 16			// IV Size 
+#define CIPHER_BLOCK_SIZE_MAX_LENGTH 32	// Block Size
+#define CIPHER_MAC_MAX_LENGTH 32		// mac_length
+
 typedef enum {
 	TLS_NULL_WITH_NULL_NULL = 0x0000,
 	TLS_RSA_WITH_AES_256_CBC_SHA = 0x0035,
@@ -128,10 +138,6 @@ typedef struct {
 } tls_packet;
 
 typedef enum {
-	TLS_PRF_SHA256
-} prf_algorithm_type;
-
-typedef enum {
 	BULK_CIPHER_ALGORITHM_NULL,
 	BULK_CIPHER_ALGORITHM_RC4,
 	BULK_CIPHER_ALGORITHM_DES,
@@ -159,8 +165,7 @@ typedef enum {
 } connection_end;
 
 typedef struct {
-	connection_end entity;
-	prf_algorithm_type prf_algorithm;
+	//prf_algorithm_type prf_algorithm;
 	bulk_cipher_algorithm_type bulk_cipher_algorithm;
 	cipher_type cipher;
 	unsigned char enc_key_length;
@@ -175,18 +180,15 @@ typedef struct {
 	unsigned char server_random[SERVER_RANDOM_SIZE];
 } rawhttps_security_parameters;
 
-// @TODO: cipher state struct is currently hardcoded for cipher suite TLS_RSA_WITH_AES_128_CBC_SHA
-// this should be redesigned... 
 typedef struct {
-	unsigned char enc_key[16];
-	unsigned char iv[16];
-	unsigned char mac_key[20];
+	unsigned char enc_key[CIPHER_ENC_KEY_MAX_LENGTH];
+	unsigned char iv[CIPHER_IV_MAX_LENGTH];
 } cipher_state;
 
 typedef struct {
 	rawhttps_security_parameters security_parameters;
 	cipher_state cipher_state;
-	//unsigned char* mac_key;
+	unsigned char mac_key[CIPHER_MAC_KEY_MAX_LENGTH];
 	unsigned long long sequence_number;
 } rawhttps_connection_state;
 #endif
