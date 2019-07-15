@@ -2,6 +2,7 @@
 #include "server.h"
 #include <signal.h>
 #include <stdlib.h>
+#include <string.h>
 
 rawhttps_server server;
 
@@ -58,11 +59,17 @@ void close_server(int signum)
 	rawhttps_server_destroy(&server);
 }
 
-int main()
+int main(int argc, char** argv)
 {
+	if (argc != 3)
+	{
+		printf("Usage: %s <certificate_path> <private_key_path>\n", argv[0]);
+		return -1;
+	}
+
 	signal(SIGINT, close_server);
 
-	rawhttps_server_init(&server, 8080);
+	rawhttps_server_init(&server, 8080, argv[1], strlen(argv[1]), argv[2], strlen(argv[2]));
 
 	// Register a handle for pattern '/'. This will basically receive all requests
 	// that doesn't have a "more specific" handler assigned.

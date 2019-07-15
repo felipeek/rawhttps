@@ -1,12 +1,15 @@
 #ifndef RAWHTTPS_SERVER_H
 #define RAWHTTPS_SERVER_H
 #include "http/http_handler_tree.h"
+#include "linux/limits.h"
 
 typedef struct {
 	int sockfd;
 	int port;
 	int initialized;
 	rawhttp_handler_tree handlers;
+	char certificate_path[PATH_MAX];
+	char private_key_path[PATH_MAX];
 } rawhttps_server;
 
 // Initializes a new rawhttps_server struct. This function will not start the server.
@@ -14,7 +17,8 @@ typedef struct {
 // server (input/output): Struct to be initialized. Must be provided.
 // port (input): The port that the server will use, when started
 // Return value: 0 if success, -1 if error
-int rawhttps_server_init(rawhttps_server* server, int port);
+int rawhttps_server_init(rawhttps_server* server, int port, const char* certificate_path, int certificate_path_length,
+	const char* private_key_path, int private_key_path_length);
 // Destroys an initialized rawhttps_server struct. If the server is listening, this function will also shutdown the server and release resources.
 // rawhttps_server_init must have been called before calling this function.
 //

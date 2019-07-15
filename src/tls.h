@@ -3,6 +3,7 @@
 #include "parser.h"
 #include "protocol.h"
 #include "util.h"
+#include "asn1.h"
 
 typedef struct
 {
@@ -13,9 +14,11 @@ typedef struct
 	rawhttps_connection_state server_connection_state;
 	dynamic_buffer handshake_messages;
 	int hanshake_completed;
+	RSA_Certificate certificate;
+	PrivateKey private_key;
 } rawhttps_tls_state;
 
-int rawhttps_tls_state_create(rawhttps_tls_state* ts);
+int rawhttps_tls_state_create(rawhttps_tls_state* ts, const char* certificate_path, const char* private_key_path);
 void rawhttps_tls_state_destroy(rawhttps_tls_state* ts);
 int rawhttps_tls_handshake(rawhttps_tls_state* ts, int connected_socket);
 long long rawhttps_tls_read(rawhttps_tls_state* ts, int connected_socket,

@@ -47,8 +47,9 @@ static void security_parameters_set_for_cipher_suite(cipher_suite_type cipher_su
 	}
 }
 
-int rawhttps_tls_state_create(rawhttps_tls_state* ts)
+int rawhttps_tls_state_create(rawhttps_tls_state* ts, const char* certificate_path, const char* private_key_path)
 {
+	int err = 0;
 	memset(ts, 0, sizeof(rawhttps_tls_state));
 	security_parameters_set_for_cipher_suite(TLS_NULL_WITH_NULL_NULL, &ts->client_connection_state.security_parameters, CONNECTION_END_CLIENT);
 	security_parameters_set_for_cipher_suite(TLS_NULL_WITH_NULL_NULL, &ts->server_connection_state.security_parameters, CONNECTION_END_SERVER);
@@ -56,6 +57,11 @@ int rawhttps_tls_state_create(rawhttps_tls_state* ts)
 	security_parameters_set_for_cipher_suite(TLS_NULL_WITH_NULL_NULL, &ts->pending_server_security_parameters, CONNECTION_END_SERVER);
 	util_dynamic_buffer_new(&ts->handshake_messages, 10 * 1024 /* @TODO: changeme */);
 	if (rawhttps_parser_state_create(&ts->ps)) return -1;
+	// @TODO(psv): function below returns error.
+	ts->certificate = asn1_parse_pem_certificate_from_file(certificate_path, 0);
+	if (err) return -1;
+	ts->private_key = asn1_parse_pem_private_certificate_key_from_file(private_key_path, &err);
+	if (err) return -1;
 	return 0;
 }
 
@@ -237,14 +243,11 @@ static int application_data_send(const rawhttps_connection_state* server_cs, int
 	return 0;
 }
 
-static int pre_master_secret_decrypt(unsigned char* result, unsigned char* encrypted, int length)
+static int pre_master_secret_decrypt(PrivateKey* pk, unsigned char* result, unsigned char* encrypted, int length)
 {
-	int err = 0;
-	PrivateKey pk = asn1_parse_pem_private_key_from_file("./certificate/new_cert/key.pem", &err);
-	//PrivateKey pk = asn1_parse_pem_private_certificate_key_from_file("./certificate/other_cert/key.pem", &err);
-	if (err) return -1;
+	int err;
 	HoBigInt encrypted_big_int = hobig_int_new_from_memory((char*)encrypted, length);
-	Decrypt_Data dd = decrypt_pkcs1_v1_5(pk, encrypted_big_int, &err);
+	Decrypt_Data dd = decrypt_pkcs1_v1_5(*pk, encrypted_big_int, &err);
 	if (err) return -1;
 	assert(dd.length == 48);	// RSA!
 	memcpy(result, dd.data, 48);
@@ -361,22 +364,8 @@ int rawhttps_tls_handshake(rawhttps_tls_state* ts, int connected_socket)
 							server_random, &ts->handshake_messages);
 						security_parameters_set_for_cipher_suite(selected_cipher_suite, &ts->pending_client_security_parameters, CONNECTION_END_CLIENT);
 						security_parameters_set_for_cipher_suite(selected_cipher_suite, &ts->pending_server_security_parameters, CONNECTION_END_SERVER);
-
-						#if 0
-						int err = 0;
-						RSA_Certificate cert = asn1_parse_pem_certificate_from_file("./certificate/other_cert/cert.pem", err);
-						if (err != 0) {
-							printf("error parsing certificate\n");
-							return -1;
-						}
-						handshake_server_certificate_message_send(&ts->server_connection_state, connected_socket, cert.raw.data,
-							cert.raw.length, &ts->handshake_messages);
-						#else
-						// @TODO: Certs should not be hardcoded
-						int cert_size;
-						unsigned char* cert = util_file_to_memory("./certificate/new_cert/cert.bin", &cert_size);
-						handshake_server_certificate_message_send(&ts->server_connection_state, connected_socket, cert, cert_size, &ts->handshake_messages);
-						#endif
+						handshake_server_certificate_message_send(&ts->server_connection_state, connected_socket, ts->certificate.raw.data,
+							ts->certificate.raw.length, &ts->handshake_messages);
 						handshake_server_hello_done_message_send(&ts->server_connection_state, connected_socket, &ts->handshake_messages);
 					} break;
 					case CLIENT_KEY_EXCHANGE_MESSAGE: {
@@ -385,7 +374,7 @@ int rawhttps_tls_handshake(rawhttps_tls_state* ts, int connected_socket)
 
 						unsigned int encrypted_pre_master_secret_length = p.subprotocol.hp.message.ckem.premaster_secret_length;
 						unsigned char* encrypted_pre_master_secret = p.subprotocol.hp.message.ckem.premaster_secret;
-						if (pre_master_secret_decrypt(pre_master_secret, encrypted_pre_master_secret, encrypted_pre_master_secret_length))
+						if (pre_master_secret_decrypt(&ts->private_key, pre_master_secret, encrypted_pre_master_secret, encrypted_pre_master_secret_length))
 							return -1;
 
 						printf("Printing premaster secret...\n");

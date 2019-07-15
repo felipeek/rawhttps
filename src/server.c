@@ -32,10 +32,13 @@ typedef struct {
 	int connected_socket;
 } rawhttps_connection;
 
-int rawhttps_server_init(rawhttps_server* server, int port)
+int rawhttps_server_init(rawhttps_server* server, int port, const char* certificate_path, int certificate_path_length,
+	const char* private_key_path, int private_key_path_length)
 {
-	if (rawhttp_handler_tree_create(&server->handlers, 16 /* change me */))
-		return -1;
+	// PATH_MAX includes nul
+	if (private_key_path_length > PATH_MAX - 1) return -1;
+	if (certificate_path_length > PATH_MAX - 1) return -1;
+	if (rawhttp_handler_tree_create(&server->handlers, 16 /* change me */)) return -1;
 
 	server->sockfd = socket(AF_INET, SOCK_STREAM, 0);
 
@@ -65,6 +68,11 @@ int rawhttps_server_init(rawhttps_server* server, int port)
 	server->port = port;
 	server->initialized = true;
 
+	strncpy(server->certificate_path, certificate_path, certificate_path_length);
+	strncpy(server->private_key_path, private_key_path, private_key_path_length);
+	server->certificate_path[certificate_path_length] = '\0';
+	server->private_key_path[private_key_path_length] = '\0';
+
 	return 0;
 }
 
@@ -90,7 +98,7 @@ static void* rawhttps_server_new_connection_callback(void* arg)
 	char* client_ip_ascii = inet_ntoa(connection->client_address.sin_addr);
 
 	rawhttps_tls_state ts;
-	if (rawhttps_tls_state_create(&ts))
+	if (rawhttps_tls_state_create(&ts, connection->server->certificate_path, connection->server->private_key_path))
 		return NULL;
 	if (rawhttps_tls_handshake(&ts, connection->connected_socket))
 	{
