@@ -8,12 +8,11 @@
 typedef struct
 {
 	rawhttps_tls_parser_state ps;
-	rawhttps_security_parameters pending_client_security_parameters;
-	rawhttps_security_parameters pending_server_security_parameters;
+	rawhttps_security_parameters pending_security_parameters;
 	rawhttps_connection_state client_connection_state;
 	rawhttps_connection_state server_connection_state;
 	dynamic_buffer handshake_messages;
-	int hanshake_completed;
+	int handshake_completed;
 	RSA_Certificate certificate;
 	PrivateKey private_key;
 } rawhttps_tls_state;
