@@ -69,7 +69,7 @@ int main(int argc, char** argv)
 
 	signal(SIGINT, close_server);
 
-	rawhttps_server_init(&server, 8090, argv[1], strlen(argv[1]), argv[2], strlen(argv[2]));
+	rawhttps_server_init(&server, 8080, argv[1], strlen(argv[1]), argv[2], strlen(argv[2]));
 
 	// Register a handle for pattern '/'. This will basically receive all requests
 	// that doesn't have a "more specific" handler assigned.

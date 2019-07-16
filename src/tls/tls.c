@@ -356,7 +356,7 @@ int rawhttps_tls_handshake(rawhttps_tls_state* ts, int connected_socket)
 }
 
 long long rawhttps_tls_read(rawhttps_tls_state* ts, int connected_socket,
-	unsigned char data[RECORD_PROTOCOL_TLS_PLAIN_TEXT_MAX_SIZE])
+	unsigned char data[RECORD_PROTOCOL_TLS_PLAIN_TEXT_FRAGMENT_MAX_SIZE])
 {
 	protocol_type type;
 

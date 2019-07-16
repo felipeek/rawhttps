@@ -11,7 +11,7 @@
 
 static long long rawhttp_parser_fetch_next_chunk(rawhttps_http_parser_buffer* hpb, int connected_socket, rawhttps_tls_state* ts)
 {
-	long long size_needed = hpb->buffer_end + RECORD_PROTOCOL_TLS_PLAIN_TEXT_MAX_SIZE;
+	long long size_needed = hpb->buffer_end + RECORD_PROTOCOL_TLS_PLAIN_TEXT_FRAGMENT_MAX_SIZE;
 	if (size_needed > hpb->buffer_size)
 	{
 		hpb->buffer = realloc(hpb->buffer, size_needed);
@@ -177,9 +177,9 @@ static int rawhttp_parser_end_of_header(rawhttps_http_parser_buffer* hpb)
 
 int rawhttps_http_parser_buffer_create(rawhttps_http_parser_buffer* hpb)
 {
-	hpb->buffer = malloc(sizeof(char) * RECORD_PROTOCOL_TLS_PLAIN_TEXT_MAX_SIZE);
+	hpb->buffer = malloc(sizeof(char) * RECORD_PROTOCOL_TLS_PLAIN_TEXT_FRAGMENT_MAX_SIZE);
 	if (!hpb->buffer) return -1;
-	hpb->buffer_size = RECORD_PROTOCOL_TLS_PLAIN_TEXT_MAX_SIZE;
+	hpb->buffer_size = RECORD_PROTOCOL_TLS_PLAIN_TEXT_FRAGMENT_MAX_SIZE;
 	hpb->buffer_end = 0;
 	hpb->header_size = 0;
 	hpb->buffer_position = 0;

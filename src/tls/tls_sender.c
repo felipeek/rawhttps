@@ -11,7 +11,7 @@ static int higher_layer_packet_send(const rawhttps_connection_state* server_cs, 
 	long long size_remaining = size;
 	while (size_remaining > 0)
 	{
-		long long size_to_send = MIN(RECORD_PROTOCOL_TLS_PLAIN_TEXT_MAX_SIZE, size_remaining);
+		long long size_to_send = MIN(RECORD_PROTOCOL_TLS_PLAIN_TEXT_FRAGMENT_MAX_SIZE, size_remaining);
 		long long buffer_position = size - size_remaining;
 
 		if (rawhttps_record_send(server_cs, data + buffer_position, size_to_send, type, connected_socket))

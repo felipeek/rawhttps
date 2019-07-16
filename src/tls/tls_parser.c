@@ -68,7 +68,7 @@ static void higher_layer_buffer_clear(rawhttps_higher_layer_buffer* higher_layer
 static long long tls_parser_fetch_next_record(rawhttps_tls_parser_state* ps, int connected_socket,
 	const rawhttps_connection_state* client_connection_state)
 {
-	long long size_needed = ps->higher_layer_buffer.buffer_end + RECORD_PROTOCOL_TLS_PLAIN_TEXT_MAX_SIZE;
+	long long size_needed = ps->higher_layer_buffer.buffer_end + RECORD_PROTOCOL_TLS_PLAIN_TEXT_FRAGMENT_MAX_SIZE;
 	if (size_needed > ps->higher_layer_buffer.buffer_size)
 	{
 		ps->higher_layer_buffer.buffer = realloc(ps->higher_layer_buffer.buffer, size_needed);
@@ -126,7 +126,7 @@ static long long tls_parser_get_next_available_bytes(rawhttps_tls_parser_state* 
 }
 
 // parses the next message into a tls_packet (packet parameter)
-int rawhttps_tls_parser_application_data_parse(char data[RECORD_PROTOCOL_TLS_PLAIN_TEXT_MAX_SIZE], long long* bytes_written, rawhttps_tls_parser_state* ps,
+int rawhttps_tls_parser_application_data_parse(char data[RECORD_PROTOCOL_TLS_PLAIN_TEXT_FRAGMENT_MAX_SIZE], long long* bytes_written, rawhttps_tls_parser_state* ps,
 	int connected_socket, rawhttps_connection_state* client_cs)
 {
 	// If we have remainings from last parse, we have an error (forgot to clear buffer)
@@ -136,7 +136,7 @@ int rawhttps_tls_parser_application_data_parse(char data[RECORD_PROTOCOL_TLS_PLA
 	*bytes_written = tls_parser_get_next_available_bytes(ps, &ptr, connected_socket);
 	if (*bytes_written == -1) return -1;
 
-	assert(*bytes_written < RECORD_PROTOCOL_TLS_PLAIN_TEXT_MAX_SIZE);
+	assert(*bytes_written < RECORD_PROTOCOL_TLS_PLAIN_TEXT_FRAGMENT_MAX_SIZE);
 	memcpy(data, ptr, *bytes_written);
 	
 	// @TODO: We must decide how we will release packets.

@@ -11,6 +11,7 @@
 #include "crypto/aes_cbc.h"
 #include "../util.h"
 #include "crypto/crypto_hashes.h"
+#include "crypto/hmac.h"
 
 #define RECORD_PARSER_CHUNK_SIZE 1024
 #define RECORD_BUFFER_INITIAL_SIZE 1024
@@ -113,10 +114,8 @@ static int record_get_next_bytes(rawhttps_record_buffer* record_buffer, long lon
 	return 0;
 }
 
-void aes_cbc_decrypt(const unsigned char* block, const unsigned char key[16], const unsigned char IV[16], int block_count, unsigned char* result);
-
 static int cipher_stream_decrypt(const rawhttps_connection_state* client_connection_state, unsigned char* record_data,
-	unsigned short record_data_length, unsigned char* result)
+	unsigned short record_data_length, unsigned char result[RECORD_PROTOCOL_TLS_PLAIN_TEXT_FRAGMENT_MAX_SIZE])
 {
 	switch(client_connection_state->security_parameters.bulk_cipher_algorithm)
 	{
@@ -124,15 +123,28 @@ static int cipher_stream_decrypt(const rawhttps_connection_state* client_connect
 			memcpy(result, record_data, record_data_length);
 			return record_data_length;
 		} break;
-		default: return -1;
+		case BULK_CIPHER_ALGORITHM_AES: {
+			return -1;
+		} break;
+		case BULK_CIPHER_ALGORITHM_DES: {
+			return -1;
+		} break;
+		case BULK_CIPHER_ALGORITHM_RC4: {
+			return -1;
+		} break;
 	}
+
+	return -1;
 }
 
 static int cipher_block_decrypt(const rawhttps_connection_state* client_connection_state, unsigned char* record_data,
-	unsigned short record_data_length, unsigned char* result)
+	unsigned short record_data_length, unsigned char result[RECORD_PROTOCOL_TLS_PLAIN_TEXT_FRAGMENT_MAX_SIZE])
 {
 	switch(client_connection_state->security_parameters.bulk_cipher_algorithm)
 	{
+		case BULK_CIPHER_ALGORITHM_NULL: {
+			return -1;
+		} break;
 		case BULK_CIPHER_ALGORITHM_AES: {
 			unsigned char record_iv_length = client_connection_state->security_parameters.record_iv_length;
 			unsigned short record_data_without_iv_length = record_data_length - (unsigned char)record_iv_length;
@@ -141,18 +153,26 @@ static int cipher_block_decrypt(const rawhttps_connection_state* client_connecti
 			int block_count = (int)record_data_without_iv_length / client_connection_state->security_parameters.block_length;
 			switch (client_connection_state->security_parameters.enc_key_length)
 			{
-				case 16: aes_128_cbc_decrypt(record_data_without_iv, client_connection_state->cipher_state.enc_key, record_iv, block_count, result); break;
+				case 16: aes_128_cbc_decrypt(record_data_without_iv, client_connection_state->cipher_state.enc_key,
+					record_iv, block_count, result); break;
 				default: return -1;
 			}
 			unsigned char padding_length = result[record_data_without_iv_length - 1];
 			return record_data_without_iv_length - client_connection_state->security_parameters.mac_length - padding_length - 1;
 		} break;
-		default: return -1;
+		case BULK_CIPHER_ALGORITHM_DES: {
+			return -1;
+		} break;
+		case BULK_CIPHER_ALGORITHM_RC4: {
+			return -1;
+		} break;
 	}
+	
+	return -1;
 }
 
 static int record_data_decrypt(const rawhttps_connection_state* client_connection_state, unsigned char* record_data,
-	unsigned short record_data_length, unsigned char* result)
+	unsigned short record_data_length, unsigned char result[RECORD_PROTOCOL_TLS_PLAIN_TEXT_FRAGMENT_MAX_SIZE])
 {
 	switch (client_connection_state->security_parameters.cipher)
 	{
@@ -162,13 +182,17 @@ static int record_data_decrypt(const rawhttps_connection_state* client_connectio
 		case CIPHER_BLOCK: {
 			return cipher_block_decrypt(client_connection_state, record_data, record_data_length, result);
 		} break;
-		default: return -1;
+		case CIPHER_AEAD: {
+			return -1;
+		}
 	}
+
+	return -1;
 }
 
 // gets the data of the next record packet and stores in the received buffer. The type is also returned via 'type'
 long long rawhttps_record_get(rawhttps_record_buffer* record_buffer, int connected_socket,
-	unsigned char data[RECORD_PROTOCOL_TLS_PLAIN_TEXT_MAX_SIZE], protocol_type* type, const rawhttps_connection_state* client_connection_state)
+	unsigned char data[RECORD_PROTOCOL_TLS_PLAIN_TEXT_FRAGMENT_MAX_SIZE], protocol_type* type, const rawhttps_connection_state* client_connection_state)
 {
 	unsigned char* ptr;
 
@@ -179,12 +203,12 @@ long long rawhttps_record_get(rawhttps_record_buffer* record_buffer, int connect
 		return -1;
 	unsigned short record_length = LITTLE_ENDIAN_16(ptr + 3);
 	*type = *ptr;
-	assert(record_length <= RECORD_PROTOCOL_TLS_CIPHER_TEXT_MAX_SIZE);
+	assert(record_length <= RECORD_PROTOCOL_TLS_CIPHER_TEXT_FRAGMENT_MAX_SIZE);
 	if (record_get_next_bytes(record_buffer, record_length, &ptr))
 		return -1;
 
 	long long decrypted_record_data_length = record_data_decrypt(client_connection_state, ptr, record_length, data);
-	assert(decrypted_record_data_length <= RECORD_PROTOCOL_TLS_PLAIN_TEXT_MAX_SIZE);
+	assert(decrypted_record_data_length <= RECORD_PROTOCOL_TLS_PLAIN_TEXT_FRAGMENT_MAX_SIZE);
 	rawhttps_record_buffer_clear(record_buffer);
 	return decrypted_record_data_length;
 }
@@ -219,103 +243,187 @@ static int send_cipher_text(const unsigned char* cipher_text, int cipher_text_le
 	return 0;
 }
 
+
+static int cipher_stream_encrypt(const rawhttps_connection_state* server_cs, unsigned char cipher_text[RECORD_PROTOCOL_TLS_PLAIN_TEXT_MAX_SIZE],
+	int cipher_text_length)
+{
+	switch(server_cs->security_parameters.bulk_cipher_algorithm)
+	{
+		case BULK_CIPHER_ALGORITHM_NULL: {
+			return 0;
+		} break;
+		case BULK_CIPHER_ALGORITHM_AES: {
+			return -1;
+		} break;
+		case BULK_CIPHER_ALGORITHM_DES: {
+			return -1;
+		} break;
+		case BULK_CIPHER_ALGORITHM_RC4: {
+			return -1;
+		} break;
+	}
+
+	return -1;
+}
+
+static int cipher_block_encrypt(const rawhttps_connection_state* server_cs, unsigned char cipher_text[RECORD_PROTOCOL_TLS_PLAIN_TEXT_MAX_SIZE],
+	int cipher_text_length)
+{
+	// Structure defined in: https://tools.ietf.org/html/rfc5246#section-6.2.3.2
+	switch(server_cs->security_parameters.bulk_cipher_algorithm)
+	{
+		case BULK_CIPHER_ALGORITHM_NULL: {
+			return -1;
+		} break;
+		case BULK_CIPHER_ALGORITHM_AES: {
+			// Encrypt data
+			unsigned char* iv = cipher_text + RECORD_PROTOCOL_TLS_HEADER_SIZE;
+			unsigned char* generic_block_cipher = cipher_text + RECORD_PROTOCOL_TLS_HEADER_SIZE + server_cs->security_parameters.record_iv_length;
+			unsigned int generic_block_cipher_size = cipher_text_length - RECORD_PROTOCOL_TLS_HEADER_SIZE - server_cs->security_parameters.record_iv_length;
+			assert(generic_block_cipher_size % server_cs->security_parameters.block_length == 0);
+			unsigned char* result = calloc(1, generic_block_cipher_size); 	// @todo: I think we dont need this
+			switch (server_cs->security_parameters.enc_key_length)
+			{
+				case 16: aes_128_cbc_encrypt(generic_block_cipher, server_cs->cipher_state.enc_key, iv,
+					generic_block_cipher_size / server_cs->security_parameters.block_length, result); break;
+				default: return -1;
+			}
+			memcpy(generic_block_cipher, result, generic_block_cipher_size);
+			rawhttps_connection_state* _server_cs = (rawhttps_connection_state*)server_cs;
+			++_server_cs->sequence_number; // FIX
+			return 0;
+		} break;
+		case BULK_CIPHER_ALGORITHM_DES: {
+			return -1;
+		} break;
+		case BULK_CIPHER_ALGORITHM_RC4: {
+			return -1;
+		} break;
+	}
+
+	return -1;
+}
+
+static int encrypt_tls_cipher_text_fragment(const rawhttps_connection_state* server_cs, unsigned char cipher_text[RECORD_PROTOCOL_TLS_PLAIN_TEXT_MAX_SIZE],
+	int cipher_text_length)
+{
+	switch(server_cs->security_parameters.cipher)
+	{
+		case CIPHER_STREAM: {
+			return cipher_stream_encrypt(server_cs, cipher_text, cipher_text_length);
+		} break;
+		case CIPHER_BLOCK: {
+			return cipher_block_encrypt(server_cs, cipher_text, cipher_text_length);
+		} break;
+		case CIPHER_AEAD: {
+			return -1;
+		} break;
+	}
+	return -1;
+}
+
+// @TODO !
+static void generate_random_iv(unsigned char iv_length, unsigned char* iv)
+{
+	for (int i = 0; i < iv_length; ++i)
+		iv[i] = i;
+}
+
+static int mac(const rawhttps_connection_state* server_cs, const unsigned char* mac_message, int mac_message_length, unsigned char* result)
+{
+	switch(server_cs->security_parameters.mac_algorithm)
+	{
+		case MAC_ALGORITHM_NULL: {
+			return -1;
+		} break;
+		case MAC_ALGORITHM_HMAC_MD5: {
+			return -1;
+		} break;
+		case MAC_ALGORITHM_HMAC_SHA1: {
+			hmac(sha1, server_cs->mac_key, server_cs->security_parameters.mac_length, mac_message, mac_message_length, result,
+				server_cs->security_parameters.mac_length);
+			return 0;
+		} break;
+		case MAC_ALGORITHM_HMAC_SHA256: {
+			return -1;
+		} break;
+		case MAC_ALGORITHM_HMAC_SHA384: {
+			return -1;
+		} break;
+		case MAC_ALGORITHM_HMAC_SHA512: {
+			return -1;
+		} break;
+	}
+	return -1;
+}
+
+static int build_mac_message(const rawhttps_connection_state* server_cs, const unsigned char* fragment, int fragment_length, protocol_type type,
+	unsigned char* result)
+{
+	unsigned long long seq_number_be = BIG_ENDIAN_64(server_cs->sequence_number);
+	unsigned char mac_tls_type = type;
+	unsigned short mac_tls_version = BIG_ENDIAN_16(TLS12);
+	unsigned short mac_tls_length = BIG_ENDIAN_16(fragment_length);
+	int mac_message_length = sizeof(seq_number_be) + sizeof(mac_tls_type) + sizeof(mac_tls_version) + sizeof(mac_tls_length) + fragment_length;
+	unsigned char* mac_message = calloc(1, mac_message_length);
+	*(unsigned long long*)(mac_message + 0) = seq_number_be;
+	*(unsigned char*)(mac_message + 8) = mac_tls_type;
+	*(unsigned short*)(mac_message + 9) = mac_tls_version;
+	*(unsigned short*)(mac_message + 11) = mac_tls_length;
+	memcpy(mac_message + 13, fragment, fragment_length);
+	int r = mac(server_cs, mac_message, mac_message_length, result);
+	free(mac_message);
+	return r;
+}
+
 static int build_tls_cipher_text(const rawhttps_connection_state* server_cs, const unsigned char* fragment, int fragment_length,
-	protocol_type type, int connected_socket, unsigned char** _cipher_text)
+	protocol_type type, unsigned char cipher_text[RECORD_PROTOCOL_TLS_CIPHER_TEXT_MAX_SIZE])
 {
 	switch (server_cs->security_parameters.cipher)
 	{
 		case CIPHER_STREAM: {
-			unsigned char record_header[5];
-			record_header[0] = type;
+			unsigned char record_header[RECORD_PROTOCOL_TLS_HEADER_SIZE];
+			*(unsigned char*)(record_header + 0) = type;
 			*(unsigned short*)(record_header + 1) = BIG_ENDIAN_16(TLS12);
 			*(unsigned short*)(record_header + 3) = BIG_ENDIAN_16(fragment_length);
 
-			int cipher_text_size = sizeof(record_header) + fragment_length;
-			unsigned char* cipher_text = malloc(cipher_text_size);
+			int cipher_text_size = RECORD_PROTOCOL_TLS_HEADER_SIZE + fragment_length;
 			unsigned char* cipher_text_ptr = cipher_text;
-			memcpy(cipher_text_ptr, record_header, sizeof(record_header));
-			cipher_text_ptr += sizeof(record_header);
+			memcpy(cipher_text_ptr, record_header, RECORD_PROTOCOL_TLS_HEADER_SIZE);
+			cipher_text_ptr += RECORD_PROTOCOL_TLS_HEADER_SIZE;
 			memcpy(cipher_text_ptr, fragment, fragment_length);
 
-			*_cipher_text = cipher_text;
 			return cipher_text_size;
 		} break;
 		case CIPHER_BLOCK: {
-			// The fragment will have:
-			// 16 Bytes for IV
-			// N bytes for the higher layer message (it may have only part of it)
-			// 20 Bytes for the MAC
-			// M bytes for padding
-			// 1 byte for padding length (M)
-			// ---
-			// Padding: Padding that is added to force the length of the plaintext to be
-			// an integral multiple of the block cipher's block length
-			// https://tools.ietf.org/html/rfc5246#section-6.2.3.2
+			// Structure defined in: https://tools.ietf.org/html/rfc5246#section-6.2.3.2
 			unsigned int cipher_text_content_length = server_cs->security_parameters.record_iv_length + fragment_length +
 				server_cs->security_parameters.mac_length + 1; // +1 for padding_length
 			unsigned char padding_length = server_cs->security_parameters.block_length - ((cipher_text_content_length -
 				server_cs->security_parameters.record_iv_length) % server_cs->security_parameters.block_length);
 			cipher_text_content_length += padding_length;
-			assert(cipher_text_content_length <= RECORD_PROTOCOL_TLS_CIPHER_TEXT_MAX_SIZE);
+			assert(cipher_text_content_length <= RECORD_PROTOCOL_TLS_CIPHER_TEXT_FRAGMENT_MAX_SIZE);
 
-			unsigned char record_header[5];
-			record_header[0] = type;
+			unsigned char record_header[RECORD_PROTOCOL_TLS_HEADER_SIZE];
+			*(unsigned char*)(record_header + 0) = type;
 			*(unsigned short*)(record_header + 1) = BIG_ENDIAN_16(TLS12);
 			*(unsigned short*)(record_header + 3) = BIG_ENDIAN_16(cipher_text_content_length);
 
-			// Calculate IV
-			// For now, we are using the Server Write IV as the CBC IV for all packets
-			// This must be random and new for each packet
-			// TODO
-			const unsigned char* IV = server_cs->cipher_state.iv;
-
-			// Calculate MAC
-			// TODO
-			// just for testing, this thing should be redesigned.
-			unsigned char mac[20] = {0}; // TODO: not 20
-			dynamic_buffer mac_message;
-			util_dynamic_buffer_new(&mac_message, 1024);
-			unsigned long long seq_number_be = BIG_ENDIAN_64(server_cs->sequence_number);
-			util_dynamic_buffer_add(&mac_message, &seq_number_be, 8);
-			unsigned char mac_tls_type = type;
-			unsigned short mac_tls_version = BIG_ENDIAN_16(TLS12);
-			unsigned short mac_tls_length = BIG_ENDIAN_16(fragment_length);
-			util_dynamic_buffer_add(&mac_message, &mac_tls_type, 1);
-			util_dynamic_buffer_add(&mac_message, &mac_tls_version, 2);
-			util_dynamic_buffer_add(&mac_message, &mac_tls_length, 2);
-			util_dynamic_buffer_add(&mac_message, fragment, fragment_length);
-			// @TODO: here we should depend on security_parameters.mac_algorithm
-			hmac(sha1, server_cs->mac_key, server_cs->security_parameters.mac_length,
-				mac_message.buffer, mac_message.size, mac, server_cs->security_parameters.mac_length);
-
-			int cipher_text_size = sizeof(record_header) + cipher_text_content_length;
-			unsigned char* cipher_text = malloc(cipher_text_size);
+			int cipher_text_size = RECORD_PROTOCOL_TLS_HEADER_SIZE + cipher_text_content_length;
 			unsigned char* cipher_text_ptr = cipher_text;
-			memcpy(cipher_text_ptr, record_header, sizeof(record_header));
-			cipher_text_ptr += sizeof(record_header);
-			memcpy(cipher_text_ptr, IV, server_cs->security_parameters.record_iv_length);
+			memcpy(cipher_text_ptr, record_header, RECORD_PROTOCOL_TLS_HEADER_SIZE);
+			cipher_text_ptr += RECORD_PROTOCOL_TLS_HEADER_SIZE;
+			generate_random_iv(server_cs->security_parameters.record_iv_length, cipher_text_ptr);
 			cipher_text_ptr += server_cs->security_parameters.record_iv_length;
 			memcpy(cipher_text_ptr, fragment, fragment_length);
 			cipher_text_ptr += fragment_length;
-			memcpy(cipher_text_ptr, mac, server_cs->security_parameters.mac_length);
+			if (build_mac_message(server_cs, fragment, fragment_length, type, cipher_text_ptr))
+				return -1;
 			cipher_text_ptr += server_cs->security_parameters.mac_length;
 			memset(cipher_text_ptr, padding_length, padding_length);
 			cipher_text_ptr += padding_length;
 			cipher_text_ptr[0] = padding_length;
 
-			// Encrypt data
-			unsigned char* data_to_encrypt = cipher_text + sizeof(record_header) + server_cs->security_parameters.record_iv_length;
-			unsigned int data_to_encrypt_size = cipher_text_content_length - server_cs->security_parameters.record_iv_length;
-			assert(data_to_encrypt_size % server_cs->security_parameters.block_length == 0);
-			unsigned char* result = calloc(1, data_to_encrypt_size); 	// @todo: I think we dont need this
-			// @TODO: here we should depend on security_parameters.bulk_algorithm
-			aes_128_cbc_encrypt(data_to_encrypt, server_cs->cipher_state.enc_key, IV,
-				data_to_encrypt_size / server_cs->security_parameters.block_length, result);
-			memcpy(data_to_encrypt, result, data_to_encrypt_size);
-			rawhttps_connection_state* _server_cs = (rawhttps_connection_state*)server_cs;
-			++_server_cs->sequence_number; // FIX
-
-			*_cipher_text = cipher_text;
 			return cipher_text_size;
 		} break;
 		case CIPHER_AEAD: {
@@ -330,8 +438,13 @@ static int build_tls_cipher_text(const rawhttps_connection_state* server_cs, con
 int rawhttps_record_send(const rawhttps_connection_state* server_cs, const unsigned char* data, int data_length,
 	protocol_type type, int connected_socket)
 {
-	unsigned char* cipher_text;
-	int cipher_text_length = build_tls_cipher_text(server_cs, data, data_length, type, connected_socket, &cipher_text);
+	unsigned char cipher_text[RECORD_PROTOCOL_TLS_CIPHER_TEXT_MAX_SIZE];
+	int cipher_text_length;
+	if ((cipher_text_length = build_tls_cipher_text(server_cs, data, data_length, type, cipher_text)) == -1)
+		return -1;
+
+	if (encrypt_tls_cipher_text_fragment(server_cs, cipher_text, cipher_text_length))
+		return -1;
 
 	// Send record packet
 	if (send_cipher_text(cipher_text, cipher_text_length, connected_socket))
