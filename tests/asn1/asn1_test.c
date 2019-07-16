@@ -89,6 +89,7 @@ void test_asn1_load_public_rsa_key(const char* filename, int print) {
 }
 
 int main() {
+    test_asn1_load_certificate("../../certificate/other_cert/cert.pem", 0);
     test_asn1_load_certificate("data/certificate.pem", 0);
     test_asn1_load_private_certificate_key("data/cert_key.pem", 0);
     test_asn1_load_private_rsa_key("data/private_rsa.pem", 0);

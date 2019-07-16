@@ -3,6 +3,7 @@
 #include <string.h>
 #include <stdlib.h>
 #include <assert.h>
+#include <errno.h>
 #define LIGHT_ARENA_IMPLEMENT
 #include "light_arena.h"
 #include <light_array.h>
@@ -235,6 +236,10 @@ parse_der(Light_Arena* arena, u8* data, int total_length, int* error) {
             node->bit_string.unused = unused;
             node->bit_string.raw_data = (const char*)at;
             node->bit_string.data = parse_der(arena, at, length, error);
+            if(error && *error) {
+                // could not parse bit string as DER
+                *error = 0;
+            }
             at += length;
         } break;
         case DER_UTF8_STRING: {
@@ -780,7 +785,7 @@ load_entire_file(const char* filename, int* out_size) {
     FILE* file = fopen(filename, "rb");
 
     if(!file) {
-        fprintf(stderr, "Could not find file %s\n", filename);
+        fprintf(stderr, "Could not find file %s: %s\n", filename, strerror(errno));
         return 0;
     }
 

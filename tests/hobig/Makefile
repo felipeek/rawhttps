@@ -1,8 +1,8 @@
-SRC=../../src
-BIN=../../bin
+SRC=../../src/tls/crypto
+BIN=../../bin/src/tls/crypto
 
 build: project
-	gcc -g -o hobig_test hobig_test.c -I../../include -I$(SRC) $(BIN)/src/hobig.o $(BIN)/src/random.o $(BIN)/src/arith.o
+	gcc -g -o hobig_test hobig_test.c -I../../include -I$(SRC) $(BIN)/hobig.o $(BIN)/random.o $(BIN)/arith.o
 
 run:
 	@./hobig_test
