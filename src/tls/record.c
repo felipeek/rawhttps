@@ -12,6 +12,7 @@
 #include "../util.h"
 #include "crypto/crypto_hashes.h"
 #include "crypto/hmac.h"
+#include "protocol.h"
 
 #define RECORD_PARSER_CHUNK_SIZE 1024
 #define RECORD_BUFFER_INITIAL_SIZE 1024
@@ -114,10 +115,10 @@ static int record_get_next_bytes(rawhttps_record_buffer* record_buffer, long lon
 	return 0;
 }
 
-static int cipher_stream_decrypt(const rawhttps_connection_state* client_connection_state, unsigned char* record_data,
+static int cipher_stream_decrypt(const rawhttps_connection_state* client_cs, unsigned char* record_data,
 	unsigned short record_data_length, unsigned char result[RECORD_PROTOCOL_TLS_PLAIN_TEXT_FRAGMENT_MAX_SIZE])
 {
-	switch(client_connection_state->security_parameters.bulk_cipher_algorithm)
+	switch(client_cs->security_parameters.bulk_cipher_algorithm)
 	{
 		case BULK_CIPHER_ALGORITHM_NULL: {
 			memcpy(result, record_data, record_data_length);
@@ -137,28 +138,28 @@ static int cipher_stream_decrypt(const rawhttps_connection_state* client_connect
 	return -1;
 }
 
-static int cipher_block_decrypt(const rawhttps_connection_state* client_connection_state, unsigned char* record_data,
+static int cipher_block_decrypt(const rawhttps_connection_state* client_cs, unsigned char* record_data,
 	unsigned short record_data_length, unsigned char result[RECORD_PROTOCOL_TLS_PLAIN_TEXT_FRAGMENT_MAX_SIZE])
 {
-	switch(client_connection_state->security_parameters.bulk_cipher_algorithm)
+	switch(client_cs->security_parameters.bulk_cipher_algorithm)
 	{
 		case BULK_CIPHER_ALGORITHM_NULL: {
 			return -1;
 		} break;
 		case BULK_CIPHER_ALGORITHM_AES: {
-			unsigned char record_iv_length = client_connection_state->security_parameters.record_iv_length;
+			unsigned char record_iv_length = client_cs->security_parameters.record_iv_length;
 			unsigned short record_data_without_iv_length = record_data_length - (unsigned char)record_iv_length;
 			unsigned char* record_iv = record_data;
 			unsigned char* record_data_without_iv = record_data + record_iv_length;
-			int block_count = (int)record_data_without_iv_length / client_connection_state->security_parameters.block_length;
-			switch (client_connection_state->security_parameters.enc_key_length)
+			int block_count = (int)record_data_without_iv_length / client_cs->security_parameters.block_length;
+			switch (client_cs->security_parameters.enc_key_length)
 			{
-				case 16: aes_128_cbc_decrypt(record_data_without_iv, client_connection_state->cipher_state.enc_key,
+				case 16: aes_128_cbc_decrypt(record_data_without_iv, client_cs->cipher_state.enc_key,
 					record_iv, block_count, result); break;
 				default: return -1;
 			}
 			unsigned char padding_length = result[record_data_without_iv_length - 1];
-			return record_data_without_iv_length - client_connection_state->security_parameters.mac_length - padding_length - 1;
+			return record_data_without_iv_length - client_cs->security_parameters.mac_length - padding_length - 1;
 		} break;
 		case BULK_CIPHER_ALGORITHM_DES: {
 			return -1;
@@ -171,16 +172,17 @@ static int cipher_block_decrypt(const rawhttps_connection_state* client_connecti
 	return -1;
 }
 
-static int record_data_decrypt(const rawhttps_connection_state* client_connection_state, unsigned char* record_data,
+static int record_data_decrypt(const rawhttps_connection_state* client_cs, unsigned char* record_data,
 	unsigned short record_data_length, unsigned char result[RECORD_PROTOCOL_TLS_PLAIN_TEXT_FRAGMENT_MAX_SIZE])
 {
-	switch (client_connection_state->security_parameters.cipher)
+	// @TODO: We need to check the MAC here!
+	switch (client_cs->security_parameters.cipher)
 	{
 		case CIPHER_STREAM: {
-			return cipher_stream_decrypt(client_connection_state, record_data, record_data_length, result);
+			return cipher_stream_decrypt(client_cs, record_data, record_data_length, result);
 		} break;
 		case CIPHER_BLOCK: {
-			return cipher_block_decrypt(client_connection_state, record_data, record_data_length, result);
+			return cipher_block_decrypt(client_cs, record_data, record_data_length, result);
 		} break;
 		case CIPHER_AEAD: {
 			return -1;
@@ -192,7 +194,7 @@ static int record_data_decrypt(const rawhttps_connection_state* client_connectio
 
 // gets the data of the next record packet and stores in the received buffer. The type is also returned via 'type'
 long long rawhttps_record_get(rawhttps_record_buffer* record_buffer, int connected_socket,
-	unsigned char data[RECORD_PROTOCOL_TLS_PLAIN_TEXT_FRAGMENT_MAX_SIZE], protocol_type* type, const rawhttps_connection_state* client_connection_state)
+	unsigned char data[RECORD_PROTOCOL_TLS_PLAIN_TEXT_FRAGMENT_MAX_SIZE], protocol_type* type, rawhttps_connection_state* client_cs)
 {
 	unsigned char* ptr;
 
@@ -207,9 +209,12 @@ long long rawhttps_record_get(rawhttps_record_buffer* record_buffer, int connect
 	if (record_get_next_bytes(record_buffer, record_length, &ptr))
 		return -1;
 
-	long long decrypted_record_data_length = record_data_decrypt(client_connection_state, ptr, record_length, data);
+	long long decrypted_record_data_length = record_data_decrypt(client_cs, ptr, record_length, data);
 	assert(decrypted_record_data_length <= RECORD_PROTOCOL_TLS_PLAIN_TEXT_FRAGMENT_MAX_SIZE);
 	rawhttps_record_buffer_clear(record_buffer);
+
+	++client_cs->sequence_number;
+
 	return decrypted_record_data_length;
 }
 
@@ -266,7 +271,7 @@ static int cipher_stream_encrypt(const rawhttps_connection_state* server_cs, uns
 	return -1;
 }
 
-static int cipher_block_encrypt(const rawhttps_connection_state* server_cs, unsigned char cipher_text[RECORD_PROTOCOL_TLS_PLAIN_TEXT_MAX_SIZE],
+static int cipher_block_encrypt(rawhttps_connection_state* server_cs, unsigned char cipher_text[RECORD_PROTOCOL_TLS_PLAIN_TEXT_MAX_SIZE],
 	int cipher_text_length)
 {
 	// Structure defined in: https://tools.ietf.org/html/rfc5246#section-6.2.3.2
@@ -281,16 +286,12 @@ static int cipher_block_encrypt(const rawhttps_connection_state* server_cs, unsi
 			unsigned char* generic_block_cipher = cipher_text + RECORD_PROTOCOL_TLS_HEADER_SIZE + server_cs->security_parameters.record_iv_length;
 			unsigned int generic_block_cipher_size = cipher_text_length - RECORD_PROTOCOL_TLS_HEADER_SIZE - server_cs->security_parameters.record_iv_length;
 			assert(generic_block_cipher_size % server_cs->security_parameters.block_length == 0);
-			unsigned char* result = calloc(1, generic_block_cipher_size); 	// @todo: I think we dont need this
 			switch (server_cs->security_parameters.enc_key_length)
 			{
 				case 16: aes_128_cbc_encrypt(generic_block_cipher, server_cs->cipher_state.enc_key, iv,
-					generic_block_cipher_size / server_cs->security_parameters.block_length, result); break;
+					generic_block_cipher_size / server_cs->security_parameters.block_length, generic_block_cipher); break;
 				default: return -1;
 			}
-			memcpy(generic_block_cipher, result, generic_block_cipher_size);
-			rawhttps_connection_state* _server_cs = (rawhttps_connection_state*)server_cs;
-			++_server_cs->sequence_number; // FIX
 			return 0;
 		} break;
 		case BULK_CIPHER_ALGORITHM_DES: {
@@ -304,7 +305,7 @@ static int cipher_block_encrypt(const rawhttps_connection_state* server_cs, unsi
 	return -1;
 }
 
-static int encrypt_tls_cipher_text_fragment(const rawhttps_connection_state* server_cs, unsigned char cipher_text[RECORD_PROTOCOL_TLS_PLAIN_TEXT_MAX_SIZE],
+static int encrypt_tls_cipher_text_fragment(rawhttps_connection_state* server_cs, unsigned char cipher_text[RECORD_PROTOCOL_TLS_PLAIN_TEXT_MAX_SIZE],
 	int cipher_text_length)
 {
 	switch(server_cs->security_parameters.cipher)
@@ -435,7 +436,7 @@ static int build_tls_cipher_text(const rawhttps_connection_state* server_cs, con
 	return -1;
 }
 
-int rawhttps_record_send(const rawhttps_connection_state* server_cs, const unsigned char* data, int data_length,
+int rawhttps_record_send(rawhttps_connection_state* server_cs, const unsigned char* data, int data_length,
 	protocol_type type, int connected_socket)
 {
 	unsigned char cipher_text[RECORD_PROTOCOL_TLS_CIPHER_TEXT_MAX_SIZE];
@@ -452,6 +453,8 @@ int rawhttps_record_send(const rawhttps_connection_state* server_cs, const unsig
 		printf("Error sending cipher text\n");
 		return -1;
 	}
+
+	++server_cs->sequence_number;
 
 	return 0;
 }

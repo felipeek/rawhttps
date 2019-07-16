@@ -5,7 +5,7 @@
 #define MIN(a,b) (((a) < (b)) ? (a) : (b))
 
 // receives a higher layer packet, splits the packet into several record packets and send to the client
-static int higher_layer_packet_send(const rawhttps_connection_state* server_cs, const unsigned char* data, long long size,
+static int higher_layer_packet_send(rawhttps_connection_state* server_cs, const unsigned char* data, long long size,
 	protocol_type type, int connected_socket)
 {
 	long long size_remaining = size;
@@ -23,7 +23,7 @@ static int higher_layer_packet_send(const rawhttps_connection_state* server_cs, 
 }
 
 // send to the client a new HANDSHAKE packet, with message type SERVER_HELLO
-int rawhttps_tls_sender_handshake_server_hello_message_send(const rawhttps_connection_state* server_cs, int connected_socket,
+int rawhttps_tls_sender_handshake_server_hello_message_send(rawhttps_connection_state* server_cs, int connected_socket,
 	unsigned short selected_cipher_suite, unsigned char* random_number, dynamic_buffer* handshake_messages)
 {
 	dynamic_buffer db;
@@ -65,7 +65,7 @@ int rawhttps_tls_sender_handshake_server_hello_message_send(const rawhttps_conne
 // send to the client a new HANDSHAKE packet, with message type SERVER_CERTIFICATE
 // for now, this function receives a single certificate!
 // @todo: support a chain of certificates
-int rawhttps_tls_sender_handshake_server_certificate_message_send(const rawhttps_connection_state* server_cs, int connected_socket,
+int rawhttps_tls_sender_handshake_server_certificate_message_send(rawhttps_connection_state* server_cs, int connected_socket,
 	unsigned char* certificate, int certificate_size, dynamic_buffer* handshake_messages)
 {
 	dynamic_buffer db;
@@ -107,7 +107,7 @@ int rawhttps_tls_sender_handshake_server_certificate_message_send(const rawhttps
 }
 
 // send to the client a new HANDSHAKE packet, with message type SERVER_HELLO_DONE
-int rawhttps_tls_sender_handshake_server_hello_done_message_send(const rawhttps_connection_state* server_cs, int connected_socket,
+int rawhttps_tls_sender_handshake_server_hello_done_message_send(rawhttps_connection_state* server_cs, int connected_socket,
 	dynamic_buffer* handshake_messages)
 {
 	dynamic_buffer db;
@@ -130,7 +130,7 @@ int rawhttps_tls_sender_handshake_server_hello_done_message_send(const rawhttps_
 }
 
 // send to the client a new CHANGE_CIPHER_SPEC message
-int rawhttps_tls_sender_handshake_finished_message_send(const rawhttps_connection_state* server_cs, int connected_socket,
+int rawhttps_tls_sender_handshake_finished_message_send(rawhttps_connection_state* server_cs, int connected_socket,
 	unsigned char verify_data[12])
 {
 	dynamic_buffer db;
@@ -150,7 +150,7 @@ int rawhttps_tls_sender_handshake_finished_message_send(const rawhttps_connectio
 }
 
 // send to the client a new CHANGE_CIPHER_SPEC message
-int rawhttps_tls_sender_change_cipher_spec_send(const rawhttps_connection_state* server_cs, int connected_socket)
+int rawhttps_tls_sender_change_cipher_spec_send(rawhttps_connection_state* server_cs, int connected_socket)
 {
 	unsigned char ccs_type = CHANGE_CIPHER_SPEC_MESSAGE;
 
@@ -161,7 +161,7 @@ int rawhttps_tls_sender_change_cipher_spec_send(const rawhttps_connection_state*
 }
 
 // send to the client a new APPLICATION_DATA message
-int rawhttps_tls_sender_application_data_send(const rawhttps_connection_state* server_cs, int connected_socket,
+int rawhttps_tls_sender_application_data_send(rawhttps_connection_state* server_cs, int connected_socket,
 	unsigned char* content, long long content_length)
 {
 	if (higher_layer_packet_send(server_cs, content, content_length, APPLICATION_DATA_PROTOCOL, connected_socket))

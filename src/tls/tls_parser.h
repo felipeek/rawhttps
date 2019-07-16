@@ -24,7 +24,7 @@ int rawhttps_tls_parser_change_cipher_spec_parse(tls_packet* packet, rawhttps_tl
 int rawhttps_tls_parser_handshake_packet_parse(tls_packet* packet, rawhttps_tls_parser_state* ps, int connected_socket,
 	rawhttps_connection_state* client_cs, dynamic_buffer* handshake_messages);
 int rawhttps_tls_parser_protocol_type_get_next(rawhttps_tls_parser_state* ps, int connected_socket,
-	const rawhttps_connection_state* client_connection_state, protocol_type* type);
+	rawhttps_connection_state* client_connection_state, protocol_type* type);
 int rawhttps_tls_parser_application_data_parse(char data[RECORD_PROTOCOL_TLS_PLAIN_TEXT_FRAGMENT_MAX_SIZE], long long* bytes_written,
 	rawhttps_tls_parser_state* ps, int connected_socket, rawhttps_connection_state* client_cs);
 #endif

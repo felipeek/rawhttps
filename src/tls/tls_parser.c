@@ -66,7 +66,7 @@ static void higher_layer_buffer_clear(rawhttps_higher_layer_buffer* higher_layer
 
 // fetches the next record data and stores in the message buffer
 static long long tls_parser_fetch_next_record(rawhttps_tls_parser_state* ps, int connected_socket,
-	const rawhttps_connection_state* client_connection_state)
+	rawhttps_connection_state* client_cs)
 {
 	long long size_needed = ps->higher_layer_buffer.buffer_end + RECORD_PROTOCOL_TLS_PLAIN_TEXT_FRAGMENT_MAX_SIZE;
 	if (size_needed > ps->higher_layer_buffer.buffer_size)
@@ -77,7 +77,7 @@ static long long tls_parser_fetch_next_record(rawhttps_tls_parser_state* ps, int
 
 	long long size_read;
 	if ((size_read = rawhttps_record_get(&ps->record_buffer, connected_socket,
-		ps->higher_layer_buffer.buffer + ps->higher_layer_buffer.buffer_end, &ps->type, client_connection_state)) < 0)
+		ps->higher_layer_buffer.buffer + ps->higher_layer_buffer.buffer_end, &ps->type, client_cs)) < 0)
 		return -1;
 	if (size_read == 0)
 		return -1;
@@ -92,10 +92,10 @@ static long long tls_parser_fetch_next_record(rawhttps_tls_parser_state* ps, int
 // If the message buffer is not empty, we use the type that was already there... This needs to be this way because
 // a single record might encapsulate more than one higher-level messages, which all must share the same protocol_type
 int rawhttps_tls_parser_protocol_type_get_next(rawhttps_tls_parser_state* ps, int connected_socket,
-	const rawhttps_connection_state* client_connection_state, protocol_type* type)
+	rawhttps_connection_state* client_cs, protocol_type* type)
 {
 	while (ps->higher_layer_buffer.buffer_end == 0)
-		if (tls_parser_fetch_next_record(ps, connected_socket, client_connection_state) == -1)
+		if (tls_parser_fetch_next_record(ps, connected_socket, client_cs) == -1)
 			return -1;
 
 	*type = ps->type;
@@ -104,10 +104,10 @@ int rawhttps_tls_parser_protocol_type_get_next(rawhttps_tls_parser_state* ps, in
 
 // gets next 'num' bytes from phb buffer.
 static int tls_parser_get_next_bytes(rawhttps_tls_parser_state* ps, long long num, unsigned char** ptr, int connected_socket,
-	const rawhttps_connection_state* client_connection_state)
+	rawhttps_connection_state* client_cs)
 {
 	while (ps->higher_layer_buffer.buffer_position_get + num > ps->higher_layer_buffer.buffer_end)
-		if (tls_parser_fetch_next_record(ps, connected_socket, client_connection_state) == -1)
+		if (tls_parser_fetch_next_record(ps, connected_socket, client_cs) == -1)
 			return -1;
 
 	ps->higher_layer_buffer.buffer_position_get += num;
@@ -126,8 +126,8 @@ static long long tls_parser_get_next_available_bytes(rawhttps_tls_parser_state* 
 }
 
 // parses the next message into a tls_packet (packet parameter)
-int rawhttps_tls_parser_application_data_parse(char data[RECORD_PROTOCOL_TLS_PLAIN_TEXT_FRAGMENT_MAX_SIZE], long long* bytes_written, rawhttps_tls_parser_state* ps,
-	int connected_socket, rawhttps_connection_state* client_cs)
+int rawhttps_tls_parser_application_data_parse(char data[RECORD_PROTOCOL_TLS_PLAIN_TEXT_FRAGMENT_MAX_SIZE], long long* bytes_written,
+	rawhttps_tls_parser_state* ps, int connected_socket, rawhttps_connection_state* client_cs)
 {
 	// If we have remainings from last parse, we have an error (forgot to clear buffer)
 	assert(ps->higher_layer_buffer.buffer_position_get == 0);
