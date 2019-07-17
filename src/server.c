@@ -24,7 +24,7 @@
 #include <stdlib.h>
 #include "http/http_parser.h"
 
-#define RAWHTTP_SERVER_MAX_QUEUE_SERVER_PENDING_CONNECTIONS 5
+#define RAWHTTPS_SERVER_MAX_QUEUE_SERVER_PENDING_CONNECTIONS 5
 
 typedef struct {
 	rawhttps_server* server;
@@ -38,7 +38,7 @@ int rawhttps_server_init(rawhttps_server* server, int port, const char* certific
 	// PATH_MAX includes nul
 	if (private_key_path_length > PATH_MAX - 1) return -1;
 	if (certificate_path_length > PATH_MAX - 1) return -1;
-	if (rawhttp_handler_tree_create(&server->handlers, 16 /* change me */)) return -1;
+	if (rawhttps_handler_tree_create(&server->handlers, 16 /* change me */)) return -1;
 
 	server->sockfd = socket(AF_INET, SOCK_STREAM, 0);
 
@@ -86,7 +86,7 @@ int rawhttps_server_destroy(rawhttps_server* server)
 	{
 		shutdown(server->sockfd, SHUT_RDWR);
 		close(server->sockfd);
-		rawhttp_handler_tree_destroy(&server->handlers);
+		rawhttps_handler_tree_destroy(&server->handlers);
 	}
 
 	return 0;
@@ -109,37 +109,37 @@ static void* rawhttps_server_new_connection_callback(void* arg)
 	}
 
 	rawhttps_http_parser_state hps;
-	rawhttp_request request;
-	rawhttp_http_parser_state_create(&hps, &ts);
-	if (rawhttp_parser_parse(&hps, &request, connection->connected_socket))
+	rawhttps_request request;
+	rawhttps_http_parser_state_create(&hps, &ts);
+	if (rawhttps_parser_parse(&hps, &request, connection->connected_socket))
 	{
 		printf("Error parsing HTTP packet. Connection was dropped or syntax was invalid");
 		printf("Connection with client %s will be destroyed", client_ip_ascii);
 		return NULL;
 	}
 
-	const rawhttp_server_handler* handler = rawhttp_handler_tree_get(&connection->server->handlers, request.uri, request.uri_size);
+	const rawhttps_server_handler* handler = rawhttps_handler_tree_get(&connection->server->handlers, request.uri, request.uri_size);
 	if (handler)
 	{
 		printf("calling handler for uri %.*s\n", request.uri_size, request.uri);
-		rawhttp_response response;
-		if (rawhttp_response_new(&response))
+		rawhttps_response response;
+		if (rawhttps_response_new(&response))
 		{
-			printf("Error creating new rawhttp_response");
-			rawhttp_header_destroy(&request.header);
-			rawhttp_http_parser_state_destroy(&hps);
+			printf("Error creating new rawhttps_response");
+			rawhttps_header_destroy(&request.header);
+			rawhttps_http_parser_state_destroy(&hps);
 			rawhttps_tls_state_destroy(&ts);
 			return NULL;
 		}
-		rawhttp_response_connection_information rci;
+		rawhttps_response_connection_information rci;
 		rci.connected_socket = connection->connected_socket;
 		rci.ts = &ts;
 		handler->handle(&rci, &request, &response);
-		if (rawhttp_response_destroy(&response))
+		if (rawhttps_response_destroy(&response))
 		{
-			printf("Error destroying rawhttp_response");
-			rawhttp_header_destroy(&request.header);
-			rawhttp_http_parser_state_destroy(&hps);
+			printf("Error destroying rawhttps_response");
+			rawhttps_header_destroy(&request.header);
+			rawhttps_http_parser_state_destroy(&hps);
 			rawhttps_tls_state_destroy(&ts);
 			return NULL;
 		}
@@ -153,8 +153,8 @@ static void* rawhttps_server_new_connection_callback(void* arg)
 			"404 Error";
 		write(request.connected_socket, buf, sizeof(buf) - 1);
 	}
-	rawhttp_header_destroy(&request.header);
-	rawhttp_http_parser_state_destroy(&hps);
+	rawhttps_header_destroy(&request.header);
+	rawhttps_http_parser_state_destroy(&hps);
 	rawhttps_tls_state_destroy(&ts);
 
 	close(connection->connected_socket);
@@ -165,7 +165,7 @@ static void* rawhttps_server_new_connection_callback(void* arg)
 
 int rawhttps_server_listen(rawhttps_server* server)
 {
-	if (listen(server->sockfd, RAWHTTP_SERVER_MAX_QUEUE_SERVER_PENDING_CONNECTIONS) == -1)
+	if (listen(server->sockfd, RAWHTTPS_SERVER_MAX_QUEUE_SERVER_PENDING_CONNECTIONS) == -1)
 		return -1;
 
 	struct sockaddr_in client_address;
@@ -194,7 +194,7 @@ int rawhttps_server_listen(rawhttps_server* server)
 }
 
 
-int rawhttp_server_register_handle(rawhttps_server* server, const char* pattern, long long pattern_size, rawhttp_server_handle_func handle)
+int rawhttps_server_register_handle(rawhttps_server* server, const char* pattern, long long pattern_size, rawhttps_server_handle_func handle)
 {
-	return rawhttp_handler_tree_put(&server->handlers, pattern, pattern_size, handle);
+	return rawhttps_handler_tree_put(&server->handlers, pattern, pattern_size, handle);
 }

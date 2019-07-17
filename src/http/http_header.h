@@ -3,15 +3,15 @@
 #include "hash_table.h"
 typedef struct
 {
-	rawhttp_hash_table ht;
-} rawhttp_header;
+	rawhttps_hash_table ht;
+} rawhttps_header;
 typedef struct
 {
 	const char* value;
 	long long value_size;
-} rawhttp_header_value;
-int rawhttp_header_create(rawhttp_header* http_header, unsigned long long capacity);
-const rawhttp_header_value* rawhttp_header_get(const rawhttp_header* http_header, const char* header, long long header_name);
-int rawhttp_header_put(rawhttp_header* http_header, const char* header, long long header_size, const char* value, long long value_size);
-int rawhttp_header_destroy(rawhttp_header* http_header);
+} rawhttps_header_value;
+int rawhttps_header_create(rawhttps_header* http_header, unsigned long long capacity);
+const rawhttps_header_value* rawhttps_header_get(const rawhttps_header* http_header, const char* header, long long header_name);
+int rawhttps_header_put(rawhttps_header* http_header, const char* header, long long header_size, const char* value, long long value_size);
+int rawhttps_header_destroy(rawhttps_header* http_header);
 #endif

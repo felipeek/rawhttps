@@ -1,5 +1,5 @@
-#ifndef RAWHTTP_UTIL_H
-#define RAWHTTP_UTIL_H
+#ifndef RAWHTTPS_UTIL_H
+#define RAWHTTPS_UTIL_H
 #include "common.h"
 
 typedef struct {

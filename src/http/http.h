@@ -11,5 +11,5 @@ typedef enum
 	HTTP_OPTIONS,
 	HTTP_CONNECT,
 	HTTP_PATCH
-} rawhttp_method;
+} rawhttps_method;
 #endif

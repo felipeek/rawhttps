@@ -12,9 +12,11 @@ C = $(wildcard ./src/*.c) $(wildcard ./src/http/*.c) $(wildcard ./src/tls/*.c) $
 ASM = $(wildcard ./src/tls/crypto/*.asm)
 
 # All .o files go to build dir.
-OBJ = $(C:%.c=$(BUILD_DIR)/%.o) $(ASM:%.asm=$(BUILD_DIR)/%.o)
+C_OBJ = $(C:%.c=$(BUILD_DIR)/%.o)
+ASM_OBJ = $(ASM:%.asm=$(BUILD_DIR)/%.o)
+OBJ = $(C_OBJ) $(ASM_OBJ)
 # Gcc/Clang will create these .d files containing dependencies.
-DEP = $(OBJ:%.o=%.d)
+DEP = $(C_OBJ:%.o=%.d)
 
 # Default target named after the binary.
 $(BIN) : $(BUILD_DIR)/$(BIN)
@@ -48,4 +50,5 @@ $(BUILD_DIR)/%.o : %.c
 .PHONY : clean
 clean :
 	# This should remove all generated files.
-	-rm $(BUILD_DIR)/$(BIN) $(OBJ) $(DEP)
+	#-rm $(BUILD_DIR)/$(BIN) $(OBJ) $(DEP)
+	-rm -f -r $(BUILD_DIR)

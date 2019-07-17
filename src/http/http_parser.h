@@ -13,7 +13,7 @@ typedef struct {
 	rawhttps_http_parser_buffer hpb;
 	rawhttps_tls_state* ts;
 } rawhttps_http_parser_state;
-int rawhttp_http_parser_state_create(rawhttps_http_parser_state* hps, rawhttps_tls_state* ts);
-void rawhttp_http_parser_state_destroy(rawhttps_http_parser_state* hps);
-int rawhttp_parser_parse(rawhttps_http_parser_state* hps, rawhttp_request* request, int connected_socket);
+int rawhttps_http_parser_state_create(rawhttps_http_parser_state* hps, rawhttps_tls_state* ts);
+void rawhttps_http_parser_state_destroy(rawhttps_http_parser_state* hps);
+int rawhttps_parser_parse(rawhttps_http_parser_state* hps, rawhttps_request* request, int connected_socket);
 #endif

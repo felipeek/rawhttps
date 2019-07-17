@@ -1,5 +1,5 @@
-#ifndef RAWHTTP_COMMON_H
-#define RAWHTTP_COMMON_H
+#ifndef RAWHTTPS_COMMON_H
+#define RAWHTTPS_COMMON_H
 
 typedef char s8;
 typedef short s16;
