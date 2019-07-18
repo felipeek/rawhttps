@@ -45,7 +45,8 @@
 
 typedef enum {
 	TLS_NULL_WITH_NULL_NULL = 0x0000,
-	TLS_RSA_WITH_AES_128_CBC_SHA = 0x002F
+	TLS_RSA_WITH_AES_128_CBC_SHA = 0x002F,
+	TLS_RSA_WITH_AES_128_CBC_SHA256 = 0x003C
 } cipher_suite_type;
 
 typedef enum {

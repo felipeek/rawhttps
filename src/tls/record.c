@@ -346,7 +346,9 @@ static int mac(const rawhttps_connection_state* server_cs, const unsigned char* 
 			return 0;
 		} break;
 		case MAC_ALGORITHM_HMAC_SHA256: {
-			return -1;
+			hmac(sha256, server_cs->mac_key, server_cs->security_parameters.mac_length, mac_message, mac_message_length, result,
+				server_cs->security_parameters.mac_length);
+			return 0;
 		} break;
 		case MAC_ALGORITHM_HMAC_SHA384: {
 			return -1;

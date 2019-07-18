@@ -40,12 +40,23 @@ static void security_parameters_set_for_cipher_suite(cipher_suite_type cipher_su
 			sp->record_iv_length = 16;
 			sp->block_length = 16;
 		} break;
+		case TLS_RSA_WITH_AES_128_CBC_SHA256: {
+			sp->cipher = CIPHER_BLOCK;
+			sp->bulk_cipher_algorithm = BULK_CIPHER_ALGORITHM_AES;
+			sp->mac_algorithm = MAC_ALGORITHM_HMAC_SHA256;
+			sp->enc_key_length = 16;
+			sp->fixed_iv_length = 16;
+			sp->mac_key_length = 32;
+			sp->mac_length = 32;
+			sp->record_iv_length = 16;
+			sp->block_length = 16;
+		} break;
 	}
 
 	assert(sp->enc_key_length <= CIPHER_ENC_KEY_MAX_LENGTH);
 	assert(sp->mac_key_length <= CIPHER_MAC_KEY_MAX_LENGTH);
 	assert(sp->fixed_iv_length <= CIPHER_IV_MAX_LENGTH);
-	assert(sp->mac_length < CIPHER_MAC_MAX_LENGTH);
+	assert(sp->mac_length <= CIPHER_MAC_MAX_LENGTH);
 	assert(sp->block_length <= CIPHER_BLOCK_SIZE_MAX_LENGTH);
 }
 
