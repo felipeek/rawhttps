@@ -175,7 +175,27 @@ static void verify_data_generate(const dynamic_buffer* all_handshake_messages, u
 	prf(master_secret, MASTER_SECRET_SIZE, "server finished", sizeof("server finished") - 1, handshake_messages_hash, 32, verify_data, 12);
 }
 
-static int handshake_client_hello_get(rawhttps_tls_state* ts, int connected_socket)
+static int cipher_suite_choose(cipher_suite_type* chosen_cipher_suite, const unsigned short* client_cipher_suites,
+	unsigned short client_cipher_suites_length)
+{
+	unsigned short supported_cipher_suites[] = { TLS_RSA_WITH_AES_128_CBC_SHA256, TLS_RSA_WITH_AES_128_CBC_SHA };
+	for (int i = 0; i < sizeof(supported_cipher_suites) / sizeof(unsigned short); ++i)
+	{
+		cipher_suite_type current = supported_cipher_suites[i];
+		for (int j = 0; j < (int)client_cipher_suites_length; ++j)
+			if (current == client_cipher_suites[j])
+			{
+				*chosen_cipher_suite = current;
+				printf("Cipher chosen: 0x%04hX\n", *chosen_cipher_suite);
+				return 0;
+			}
+	}
+
+	return -1;
+}
+
+static int handshake_client_hello_get(rawhttps_tls_state* ts, int connected_socket, unsigned short** client_cipher_suites,
+	unsigned short* client_cipher_suites_length)
 {
 	tls_packet p;
 	protocol_type type;
@@ -196,6 +216,8 @@ static int handshake_client_hello_get(rawhttps_tls_state* ts, int connected_sock
 		return -1;
 
 	memcpy(ts->pending_security_parameters.client_random, p.subprotocol.hp.message.chm.client_random, CLIENT_RANDOM_SIZE);
+	*client_cipher_suites = p.subprotocol.hp.message.chm.cipher_suites;
+	*client_cipher_suites_length = p.subprotocol.hp.message.chm.cipher_suites_length;
 	printf("Printing client random number...\n");
 	util_buffer_print_hex(p.subprotocol.hp.message.chm.client_random, (long long)CLIENT_RANDOM_SIZE);
 
@@ -335,10 +357,16 @@ static int handshake_finished_send(rawhttps_tls_state* ts, int connected_socket)
 // performs the TLS handshake
 int rawhttps_tls_handshake(rawhttps_tls_state* ts, int connected_socket)
 {
-	if (handshake_client_hello_get(ts, connected_socket))
+	unsigned short* client_cipher_suites;
+	unsigned short client_cipher_suites_length;
+	if (handshake_client_hello_get(ts, connected_socket, &client_cipher_suites, &client_cipher_suites_length))
+		return -1;
+
+	cipher_suite_type chosen_cipher;
+	if (cipher_suite_choose(&chosen_cipher, client_cipher_suites, client_cipher_suites_length))
 		return -1;
 	
-	if (handshake_server_hello_send(ts, connected_socket, TLS_RSA_WITH_AES_128_CBC_SHA))
+	if (handshake_server_hello_send(ts, connected_socket, chosen_cipher))
 		return -1;
 
 	if (handshake_certificate_send(ts, connected_socket))

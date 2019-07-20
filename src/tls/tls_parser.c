@@ -205,7 +205,8 @@ int rawhttps_tls_parser_handshake_packet_parse(tls_packet* packet, rawhttps_tls_
 			memcpy(hp.message.chm.session_id, ptr, hp.message.chm.session_id_length); ptr += hp.message.chm.session_id_length;
 			hp.message.chm.cipher_suites_length = LITTLE_ENDIAN_16(ptr); ptr += 2;
 			hp.message.chm.cipher_suites = malloc(2 * hp.message.chm.cipher_suites_length);
-			memcpy(hp.message.chm.cipher_suites, ptr, 2 * hp.message.chm.cipher_suites_length); ptr += 2 * hp.message.chm.session_id_length;
+			for (int i = 0; i < (int)hp.message.chm.cipher_suites_length; ++i)
+				hp.message.chm.cipher_suites[i] = LITTLE_ENDIAN_16(ptr + i * sizeof(unsigned char));
 			hp.message.chm.compression_methods_length = *ptr; ptr += 1;
 			hp.message.chm.compression_methods = malloc(hp.message.chm.compression_methods_length);
 			memcpy(hp.message.chm.compression_methods, ptr, hp.message.chm.compression_methods_length); ptr += hp.message.chm.compression_methods_length;
