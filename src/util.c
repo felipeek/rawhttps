@@ -41,6 +41,7 @@ void util_buffer_print_hex(const unsigned char* msg, int size)
 	}
 
 	printf("%.*s\n", (int)log_db.size, log_db.buffer);
+	util_dynamic_buffer_free(&log_db);
 }
 
 unsigned char* util_file_to_memory(const char* path, int* file_size)

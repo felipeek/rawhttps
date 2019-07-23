@@ -146,6 +146,7 @@ int rawhttps_tls_sender_handshake_finished_message_send(rawhttps_connection_stat
 	if (higher_layer_packet_send(server_cs, db.buffer, db.size, HANDSHAKE_PROTOCOL, connected_socket))
 		return -1;
 
+	util_dynamic_buffer_free(&db);
 	return 0;
 }
 

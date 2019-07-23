@@ -100,7 +100,7 @@ static void server_hello_random_number_generate(unsigned char server_random[32])
 
 static int pre_master_secret_decrypt(PrivateKey* pk, unsigned char* result, unsigned char* encrypted, int length)
 {
-	int err;
+	int err = 0;
 	HoBigInt encrypted_big_int = hobig_int_new_from_memory((char*)encrypted, length);
 	Decrypt_Data dd = decrypt_pkcs1_v1_5(*pk, encrypted_big_int, &err);
 	if (err) return -1;
@@ -197,7 +197,7 @@ static int cipher_suite_choose(cipher_suite_type* chosen_cipher_suite, const uns
 static int handshake_client_hello_get(rawhttps_tls_state* ts, int connected_socket, unsigned short** client_cipher_suites,
 	unsigned short* client_cipher_suites_length)
 {
-	tls_packet p;
+	handshake_packet p;
 	protocol_type type;
 
 	// Little hack: We need to force fetching a new record data, so we are able to get the protocol type!
@@ -206,20 +206,32 @@ static int handshake_client_hello_get(rawhttps_tls_state* ts, int connected_sock
 
 	// We expect a handshake packet (with message CLIENT_HELLO)
 	if (type != HANDSHAKE_PROTOCOL)
+	{
+		rawhttps_tls_parser_handshake_packet_release(&p);
 		return -1;
+	}
 
 	if (rawhttps_tls_parser_handshake_packet_parse(&p, &ts->ps, connected_socket, &ts->client_connection_state, &ts->handshake_messages))
+	{
+		rawhttps_tls_parser_handshake_packet_release(&p);
 		return -1;
+	}
 
 	// We expect a handshake packet (with message CLIENT_HELLO)
-	if (p.subprotocol.hp.hh.message_type != CLIENT_HELLO_MESSAGE)
+	if (p.hh.message_type != CLIENT_HELLO_MESSAGE)
+	{
+		rawhttps_tls_parser_handshake_packet_release(&p);
 		return -1;
+	}
 
-	memcpy(ts->pending_security_parameters.client_random, p.subprotocol.hp.message.chm.client_random, CLIENT_RANDOM_SIZE);
-	*client_cipher_suites = p.subprotocol.hp.message.chm.cipher_suites;
-	*client_cipher_suites_length = p.subprotocol.hp.message.chm.cipher_suites_length;
+	memcpy(ts->pending_security_parameters.client_random, p.message.chm.client_random, CLIENT_RANDOM_SIZE);
+	*client_cipher_suites = malloc(p.message.chm.cipher_suites_length * 2);
+	memcpy(*client_cipher_suites, p.message.chm.cipher_suites, p.message.chm.cipher_suites_length * 2);
+	*client_cipher_suites_length = p.message.chm.cipher_suites_length;
 	printf("Printing client random number...\n");
-	util_buffer_print_hex(p.subprotocol.hp.message.chm.client_random, (long long)CLIENT_RANDOM_SIZE);
+	util_buffer_print_hex(p.message.chm.client_random, (long long)CLIENT_RANDOM_SIZE);
+
+	rawhttps_tls_parser_handshake_packet_release(&p);
 
 	return 0;
 }
@@ -252,31 +264,46 @@ static int handshake_server_hello_done_send(rawhttps_tls_state* ts, int connecte
 
 static int handshake_client_key_exchange_get(rawhttps_tls_state* ts, int connected_socket)
 {
-	tls_packet p;
+	handshake_packet p;
 	protocol_type type;
 
 	// Little hack: We need to force fetching a new record data, so we are able to get the protocol type!
 	if (rawhttps_tls_parser_protocol_type_get_next(&ts->ps, connected_socket, &ts->client_connection_state, &type))
+	{
+		rawhttps_tls_parser_handshake_packet_release(&p);
 		return -1;
+	}
 
 	// We expect a handshake packet (with message CLIENT_KEY_EXCHANGE)
 	if (type != HANDSHAKE_PROTOCOL)
+	{
+		rawhttps_tls_parser_handshake_packet_release(&p);
 		return -1;
+	}
 
 	if (rawhttps_tls_parser_handshake_packet_parse(&p, &ts->ps, connected_socket, &ts->client_connection_state, &ts->handshake_messages))
+	{
+		rawhttps_tls_parser_handshake_packet_release(&p);
 		return -1;
+	}
 
 	// We expect a handshake packet (with message CLIENT_KEY_EXCHANGE)
-	if (p.subprotocol.hp.hh.message_type != CLIENT_KEY_EXCHANGE_MESSAGE)
+	if (p.hh.message_type != CLIENT_KEY_EXCHANGE_MESSAGE)
+	{
+		rawhttps_tls_parser_handshake_packet_release(&p);
 		return -1;
+	}
 	
 	unsigned char pre_master_secret[PRE_MASTER_SECRET_SIZE];
 	unsigned char master_secret[MASTER_SECRET_SIZE];
 
-	unsigned int encrypted_pre_master_secret_length = p.subprotocol.hp.message.ckem.premaster_secret_length;
-	unsigned char* encrypted_pre_master_secret = p.subprotocol.hp.message.ckem.premaster_secret;
+	unsigned int encrypted_pre_master_secret_length = p.message.ckem.premaster_secret_length;
+	unsigned char* encrypted_pre_master_secret = p.message.ckem.premaster_secret;
 	if (pre_master_secret_decrypt(&ts->private_key, pre_master_secret, encrypted_pre_master_secret, encrypted_pre_master_secret_length))
+	{
+		rawhttps_tls_parser_handshake_packet_release(&p);
 		return -1;
+	}
 
 	printf("Printing premaster secret...\n");
 	util_buffer_print_hex(pre_master_secret, (long long)PRE_MASTER_SECRET_SIZE);
@@ -287,52 +314,81 @@ static int handshake_client_key_exchange_get(rawhttps_tls_state* ts, int connect
 
 	printf("Printing MASTER SECRET...");
 	util_buffer_print_hex(master_secret, MASTER_SECRET_SIZE);
+
+	rawhttps_tls_parser_handshake_packet_release(&p);
+
 	return 0;
 }
 
 static int handshake_change_cipher_spec_get(rawhttps_tls_state* ts, int connected_socket)
 {
-	tls_packet p;
+	change_cipher_spec_packet p;
 	protocol_type type;
 
 	// Little hack: We need to force fetching a new record data, so we are able to get the protocol type!
 	if (rawhttps_tls_parser_protocol_type_get_next(&ts->ps, connected_socket, &ts->client_connection_state, &type))
+	{
+		rawhttps_tls_parser_change_cipher_spec_release(&p);
 		return -1;
+	}
 
 	// We expect a CHANGE_CIPHER_SPEC packet
 	if (type != CHANGE_CIPHER_SPEC_PROTOCOL)
+	{
+		rawhttps_tls_parser_change_cipher_spec_release(&p);
 		return -1;
+	}
 
 	if (rawhttps_tls_parser_change_cipher_spec_parse(&p, &ts->ps, connected_socket, &ts->client_connection_state))
+	{
+		rawhttps_tls_parser_change_cipher_spec_release(&p);
 		return -1;
+	}
 
-	if (p.subprotocol.ccsp.message != CHANGE_CIPHER_SPEC_MESSAGE)
+	if (p.message != CHANGE_CIPHER_SPEC_MESSAGE)
+	{
+		rawhttps_tls_parser_change_cipher_spec_release(&p);
 		return -1;
+	}
 
 	pending_client_cipher_apply(ts);
+	rawhttps_tls_parser_change_cipher_spec_release(&p);
 	return 0;
 }
 
 static int handshake_finished_get(rawhttps_tls_state* ts, int connected_socket)
 {
-	tls_packet p;
+	handshake_packet p;
 	protocol_type type;
 
 	// Little hack: We need to force fetching a new record data, so we are able to get the protocol type!
 	if (rawhttps_tls_parser_protocol_type_get_next(&ts->ps, connected_socket, &ts->client_connection_state, &type))
+	{
+		rawhttps_tls_parser_handshake_packet_release(&p);
 		return -1;
+	}
 
 	// We expect a handshake packet (with message FINISHED)
 	if (type != HANDSHAKE_PROTOCOL)
+	{
+		rawhttps_tls_parser_handshake_packet_release(&p);
 		return -1;
+	}
 
 	if (rawhttps_tls_parser_handshake_packet_parse(&p, &ts->ps, connected_socket, &ts->client_connection_state, &ts->handshake_messages))
+	{
+		rawhttps_tls_parser_handshake_packet_release(&p);
 		return -1;
+	}
 
 	// We expect a handshake packet (with message FINISHED)
-	if (p.subprotocol.hp.hh.message_type != FINISHED_MESSAGE)
+	if (p.hh.message_type != FINISHED_MESSAGE)
+	{
+		rawhttps_tls_parser_handshake_packet_release(&p);
 		return -1;
+	}
 	
+	rawhttps_tls_parser_handshake_packet_release(&p);
 	return 0;
 }
 
@@ -391,6 +447,8 @@ int rawhttps_tls_handshake(rawhttps_tls_state* ts, int connected_socket)
 		return -1;
 
 	ts->handshake_completed = true;
+
+	free(client_cipher_suites);
 	return 0;
 }
 

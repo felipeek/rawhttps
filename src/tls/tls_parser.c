@@ -147,21 +147,17 @@ int rawhttps_tls_parser_application_data_parse(char data[RECORD_PROTOCOL_TLS_PLA
 }
 
 // parses the next message into a tls_packet (packet parameter)
-int rawhttps_tls_parser_change_cipher_spec_parse(tls_packet* packet, rawhttps_tls_parser_state* ps, int connected_socket,
+int rawhttps_tls_parser_change_cipher_spec_parse(change_cipher_spec_packet* packet, rawhttps_tls_parser_state* ps, int connected_socket,
 	rawhttps_connection_state* client_cs)
 {
 	// If we have remainings from last parse, we have an error (forgot to clear buffer)
 	assert(ps->higher_layer_buffer.buffer_position_get == 0);
 
 	unsigned char* ptr;
-	packet->type = CHANGE_CIPHER_SPEC_PROTOCOL;
-
-	change_cipher_spec_packet ccsp;
 	// If we have a change_cipher_spec packet, we can be sure that we only have to get a single byte, which is the 'message'
 	if (tls_parser_get_next_bytes(ps, 1, &ptr, connected_socket, client_cs))
 		return -1;
-	ccsp.message = *ptr;
-	packet->subprotocol.ccsp = ccsp;
+	packet->message = *ptr;
 	
 	// @TODO: We must decide how we will release packets.
 
@@ -171,53 +167,53 @@ int rawhttps_tls_parser_change_cipher_spec_parse(tls_packet* packet, rawhttps_tl
 }
 
 // parses the next message into a tls_packet (packet parameter)
-int rawhttps_tls_parser_handshake_packet_parse(tls_packet* packet, rawhttps_tls_parser_state* ps, int connected_socket,
+int rawhttps_tls_parser_handshake_packet_parse(handshake_packet* packet, rawhttps_tls_parser_state* ps, int connected_socket,
 	rawhttps_connection_state* client_cs, dynamic_buffer* handshake_messages)
 {
 	// If we have remainings from last parse, we have an error (forgot to clear buffer)
 	assert(ps->higher_layer_buffer.buffer_position_get == 0);
 
 	unsigned char* ptr;
-	packet->type = HANDSHAKE_PROTOCOL;
 
-	handshake_packet hp;
 	// If we have a handshake packet, we must first get the first 4 bytes to get the message type and the message length.
 	if (tls_parser_get_next_bytes(ps, 4, &ptr, connected_socket, client_cs))
 		return -1;
 	// Before parsing we need to add its content to the handshake_messages buffer
 	// This is needed by the full handshake when the FINISHED message is received.
 	util_dynamic_buffer_add(handshake_messages, ptr, 4);
-	hp.hh.message_type = *ptr; ++ptr;
-	hp.hh.message_length = LITTLE_ENDIAN_24(ptr); ptr += 3;
-	if (tls_parser_get_next_bytes(ps, hp.hh.message_length, &ptr, connected_socket, client_cs))
+	packet->hh.message_type = *ptr; ++ptr;
+	packet->hh.message_length = LITTLE_ENDIAN_24(ptr); ptr += 3;
+	if (tls_parser_get_next_bytes(ps, packet->hh.message_length, &ptr, connected_socket, client_cs))
 		return -1;
 	// If the packet has type HANDSHAKE_PROTOCOL, before parsing we need to add its content to the handshake_messages buffer
 	// This is needed by the full handshake when the FINISHED message is received.
-	util_dynamic_buffer_add(handshake_messages, ptr, hp.hh.message_length);
+	util_dynamic_buffer_add(handshake_messages, ptr, packet->hh.message_length);
 
-	switch (hp.hh.message_type)
+	switch (packet->hh.message_type)
 	{
 		case CLIENT_HELLO_MESSAGE: {
-			hp.message.chm.ssl_version = LITTLE_ENDIAN_16(ptr); ptr += 2;
-			memcpy(hp.message.chm.client_random, ptr, 32); ptr += 32;
-			hp.message.chm.session_id_length = *ptr; ptr += 1;
-			hp.message.chm.session_id = malloc(hp.message.chm.session_id_length);
-			memcpy(hp.message.chm.session_id, ptr, hp.message.chm.session_id_length); ptr += hp.message.chm.session_id_length;
-			hp.message.chm.cipher_suites_length = LITTLE_ENDIAN_16(ptr); ptr += 2;
-			hp.message.chm.cipher_suites = malloc(2 * hp.message.chm.cipher_suites_length);
-			for (int i = 0; i < (int)hp.message.chm.cipher_suites_length; ++i)
-				hp.message.chm.cipher_suites[i] = LITTLE_ENDIAN_16(ptr + i * sizeof(unsigned char));
-			hp.message.chm.compression_methods_length = *ptr; ptr += 1;
-			hp.message.chm.compression_methods = malloc(hp.message.chm.compression_methods_length);
-			memcpy(hp.message.chm.compression_methods, ptr, hp.message.chm.compression_methods_length); ptr += hp.message.chm.compression_methods_length;
-			hp.message.chm.extensions_length = LITTLE_ENDIAN_16(ptr); ptr += 2;
-			hp.message.chm.extensions = malloc(hp.message.chm.extensions_length);
-			memcpy(hp.message.chm.extensions, ptr, hp.message.chm.extensions_length); ptr += hp.message.chm.extensions_length;
+			packet->message.chm.ssl_version = LITTLE_ENDIAN_16(ptr); ptr += 2;
+			memcpy(packet->message.chm.client_random, ptr, 32); ptr += 32;
+			packet->message.chm.session_id_length = *ptr; ptr += 1;
+			packet->message.chm.session_id = malloc(packet->message.chm.session_id_length);
+			memcpy(packet->message.chm.session_id, ptr, packet->message.chm.session_id_length); ptr += packet->message.chm.session_id_length;
+			packet->message.chm.cipher_suites_length = LITTLE_ENDIAN_16(ptr); ptr += 2;
+			packet->message.chm.cipher_suites = malloc(packet->message.chm.cipher_suites_length);
+			packet->message.chm.cipher_suites_length /= 2;
+			for (int i = 0; i < (int)packet->message.chm.cipher_suites_length; ++i) {
+				packet->message.chm.cipher_suites[i] = LITTLE_ENDIAN_16(ptr); ptr += 2;
+			}
+			packet->message.chm.compression_methods_length = *ptr; ptr += 1;
+			packet->message.chm.compression_methods = malloc(packet->message.chm.compression_methods_length);
+			memcpy(packet->message.chm.compression_methods, ptr, packet->message.chm.compression_methods_length); ptr += packet->message.chm.compression_methods_length;
+			packet->message.chm.extensions_length = LITTLE_ENDIAN_16(ptr); ptr += 2;
+			packet->message.chm.extensions = malloc(packet->message.chm.extensions_length);
+			memcpy(packet->message.chm.extensions, ptr, packet->message.chm.extensions_length); ptr += packet->message.chm.extensions_length;
 		} break;
 		case CLIENT_KEY_EXCHANGE_MESSAGE: {
-			hp.message.ckem.premaster_secret_length = LITTLE_ENDIAN_16(ptr); ptr += 2;
-			hp.message.ckem.premaster_secret = malloc(hp.message.ckem.premaster_secret_length);
-			memcpy(hp.message.ckem.premaster_secret, ptr, hp.message.ckem.premaster_secret_length); ptr += hp.message.ckem.premaster_secret_length;
+			packet->message.ckem.premaster_secret_length = LITTLE_ENDIAN_16(ptr); ptr += 2;
+			packet->message.ckem.premaster_secret = malloc(packet->message.ckem.premaster_secret_length);
+			memcpy(packet->message.ckem.premaster_secret, ptr, packet->message.ckem.premaster_secret_length); ptr += packet->message.ckem.premaster_secret_length;
 		} break;
 		// Since we are the server, it doesn't make sense for us to parse these messages
 		case SERVER_CERTIFICATE_MESSAGE:
@@ -231,11 +227,40 @@ int rawhttps_tls_parser_handshake_packet_parse(tls_packet* packet, rawhttps_tls_
 		} break;
 	}
 
-	packet->subprotocol.hp = hp;
-	
-	// @TODO: We must decide how we will release packets.
-
 	// Release Message Data
 	higher_layer_buffer_clear(&ps->higher_layer_buffer);
 	return 0;
+}
+
+void rawhttps_tls_parser_change_cipher_spec_release(change_cipher_spec_packet* packet)
+{
+}
+
+void rawhttps_tls_parser_handshake_packet_release(handshake_packet* packet)
+{
+	switch (packet->hh.message_type)
+	{
+		case CLIENT_HELLO_MESSAGE: {
+			if (packet->message.chm.cipher_suites_length > 0)
+				free(packet->message.chm.cipher_suites);
+			if (packet->message.chm.compression_methods_length > 0)
+				free(packet->message.chm.compression_methods);
+			if (packet->message.chm.extensions_length > 0)
+				free(packet->message.chm.extensions);
+			if (packet->message.chm.session_id_length > 0)
+				free(packet->message.chm.session_id);
+		} break;
+		case CLIENT_KEY_EXCHANGE_MESSAGE: {
+			if (packet->message.ckem.premaster_secret_length > 0)
+				free(packet->message.ckem.premaster_secret);
+		} break;
+		// Since we are the server, it doesn't make sense for us to parse these messages
+		case SERVER_CERTIFICATE_MESSAGE:
+		case SERVER_HELLO_DONE_MESSAGE:
+		case SERVER_HELLO_MESSAGE: {
+			return;
+		} break;
+		case FINISHED_MESSAGE: {
+		} break;
+	}
 }
