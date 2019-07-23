@@ -301,7 +301,7 @@ parse_der(Light_Arena* arena, u8* data, int total_length, int* error) {
                 length--;
                 extra_length++;
             }
-            HoBigInt b = hobig_int_new_from_memory((const char*)at, length);
+            HoBigInt b = hobig_int_new_from_memory(at, length);
             node->kind = DER_INTEGER;
             node->length = length + advance + extra_length;
             node->integer.i = b;
@@ -389,7 +389,7 @@ asn1_parse_pem_private(const u8* data, int length, int* error, int is_base64_enc
             return (PrivateKey){0};
         }
     } else {
-        r.data = data;
+        r.data = (u8*)data;
         r.length = length;
     }
 
@@ -465,7 +465,7 @@ asn1_parse_pem_public(const u8* data, int length, int* error, int is_base64_enco
             return (PublicKey){0};
         }
     } else {
-        r.data = data;
+        r.data = (u8*)data;
         r.length = length;
     }
 
@@ -526,7 +526,7 @@ asn1_parse_public_key(const u8* data, int length, int* error, int is_base64_enco
             if(error) *error |= 1;
         }
     } else {
-        r.data = data;
+        r.data = (u8*)data;
         r.length = length;
     }
 
@@ -694,7 +694,7 @@ asn1_parse_pem_certificate(const u8* data, int length, int* error, int is_base64
             if(error) *error |= 1;
         }
     } else {
-        r.data = data;
+        r.data = (u8*)data;
         r.length = length;
     }
 
@@ -927,7 +927,7 @@ asn1_parse_pem_private_certificate_key(const unsigned char* data, int length_byt
             return (PrivateKey){0};
         }
     } else {
-        r.data = data;
+        r.data = (u8*)data;
         r.length = length_bytes;
     }
 

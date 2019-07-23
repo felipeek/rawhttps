@@ -64,7 +64,7 @@ end_loop:
 
 HoBigInt
 encrypt_pkcs1_v1_5(PublicKey pk, const char* in, int length_bytes) {
-    char out[256];
+    unsigned char out[256];
 
     // Cannot encrypt something bigger than 128 bits or 16 bytes
     if(length_bytes > 32) return (HoBigInt){0};

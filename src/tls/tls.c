@@ -101,7 +101,7 @@ static void server_hello_random_number_generate(unsigned char server_random[32])
 static int pre_master_secret_decrypt(PrivateKey* pk, unsigned char* result, unsigned char* encrypted, int length)
 {
 	int err = 0;
-	HoBigInt encrypted_big_int = hobig_int_new_from_memory((char*)encrypted, length);
+	HoBigInt encrypted_big_int = hobig_int_new_from_memory(encrypted, length);
 	Decrypt_Data dd = decrypt_pkcs1_v1_5(*pk, encrypted_big_int, &err);
 	if (err) return -1;
 	assert(dd.length == 48);	// RSA!
