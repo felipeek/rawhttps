@@ -83,7 +83,7 @@ encrypt_pkcs1_v1_5(PublicKey pk, const char* in, int length_bytes) {
 
     memcpy(out+padding_byte_count + 3, in, length_bytes);
 
-    HoBigInt rsa_plain_text = hobig_int_new_from_memory((const char*)out, 256);
+    HoBigInt rsa_plain_text = hobig_int_new_from_memory(out, 256);
 
     HoBigInt encrypted = hobig_int_mod_div(&rsa_plain_text, &pk.E, &pk.N);
 

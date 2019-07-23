@@ -121,7 +121,7 @@ static void* rawhttps_server_new_connection_callback(void* arg)
 	const rawhttps_server_handler* handler = rawhttps_handler_tree_get(&connection->server->handlers, request.uri, request.uri_size);
 	if (handler)
 	{
-		printf("calling handler for uri %.*s\n", request.uri_size, request.uri);
+		printf("calling handler for uri %.*s\n", (int)request.uri_size, request.uri);
 		rawhttps_response response;
 		if (rawhttps_response_new(&response))
 		{

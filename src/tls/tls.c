@@ -60,7 +60,7 @@ static void security_parameters_set_for_cipher_suite(cipher_suite_type cipher_su
 	assert(sp->block_length <= CIPHER_BLOCK_SIZE_MAX_LENGTH);
 }
 
-static int prf(const unsigned char* secret, int secret_length, const char* label, int label_length,
+static void prf(const unsigned char* secret, int secret_length, const char* label, int label_length,
     const unsigned char* seed, int seed_length, unsigned char* result, int result_length)
 {
 	prf12(sha256, 32, secret, secret_length, label, label_length, seed, seed_length, result, result_length);

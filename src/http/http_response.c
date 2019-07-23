@@ -1,13 +1,9 @@
 #include "http_response.h"
 #include <stdlib.h>
 #include <memory.h>
+#include <stdio.h>
+#include "../util.h"
 #include "../tls/tls.h"
-
-typedef struct {
-	char* buffer;
-	long long size;
-	long long capacity;
-} rawhttps_response_dynamic_buffer;
 
 int rawhttps_response_new(rawhttps_response* response)
 {
@@ -42,19 +38,6 @@ void rawhttps_response_add_header(rawhttps_response* response, const char* heade
 	response->headers[response->headers_size++] = rh;
 }
 
-static void rawhttps_response_dynamic_buffer_add(rawhttps_response_dynamic_buffer* db, const char* msg, long long msg_size)
-{
-	while (db->size + msg_size + 1 >= db->capacity)
-	{
-		db->buffer = realloc(db->buffer, 2 * db->capacity);
-		db->capacity *= 2;
-	}
-
-	memcpy(db->buffer + db->size, msg, msg_size);
-	(db->buffer)[db->size + msg_size + 1] = '\0';
-	db->size += msg_size;
-}
-
 ssize_t rawhttps_response_flush(const void* internal, rawhttps_response* response)
 {
 	#define CONTENT_LENGTH_HEADER "Content-Length"
@@ -66,30 +49,28 @@ ssize_t rawhttps_response_flush(const void* internal, rawhttps_response* respons
 	rawhttps_response_add_header(response, CONTENT_LENGTH_HEADER, sizeof(CONTENT_LENGTH_HEADER) - 1,
 		content_length_buffer, content_length_buffer_written);
 
-	rawhttps_response_dynamic_buffer data_to_send;
-	data_to_send.buffer = calloc(1, 1024);
-	data_to_send.capacity = 1024;
-	data_to_send.size = 0;
+	dynamic_buffer data_to_send;
+	util_dynamic_buffer_new(&data_to_send, 1024);
 
 	int status_line_written = sprintf(buffer, "HTTP/1.1 %d\r\n", response->status_code);
-	rawhttps_response_dynamic_buffer_add(&data_to_send, buffer, status_line_written);
+	util_dynamic_buffer_add(&data_to_send, buffer, status_line_written);
 
 	for (long long i = 0; i < response->headers_size; ++i)
 	{
 		rawhttps_response_header* rh = &response->headers[i];
-		rawhttps_response_dynamic_buffer_add(&data_to_send, rh->header, rh->header_size);
-		rawhttps_response_dynamic_buffer_add(&data_to_send, ": ", 2);
-		rawhttps_response_dynamic_buffer_add(&data_to_send, rh->value, rh->value_size);
-		rawhttps_response_dynamic_buffer_add(&data_to_send, "\r\n", 2);
+		util_dynamic_buffer_add(&data_to_send, rh->header, rh->header_size);
+		util_dynamic_buffer_add(&data_to_send, ": ", 2);
+		util_dynamic_buffer_add(&data_to_send, rh->value, rh->value_size);
+		util_dynamic_buffer_add(&data_to_send, "\r\n", 2);
 	}
 
-	rawhttps_response_dynamic_buffer_add(&data_to_send, "\r\n", 2);
+	util_dynamic_buffer_add(&data_to_send, "\r\n", 2);
 
-	rawhttps_response_dynamic_buffer_add(&data_to_send, response->response_content, response->response_content_size);
+	util_dynamic_buffer_add(&data_to_send, response->response_content, response->response_content_size);
 
 	long long written = rawhttps_tls_write(connection->ts, connection->connected_socket, data_to_send.buffer, data_to_send.size);
 
-	free(data_to_send.buffer);
+	util_dynamic_buffer_free(&data_to_send);
 
 	return written;
 }

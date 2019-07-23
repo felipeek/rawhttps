@@ -15,7 +15,7 @@ typedef struct {
 HoBigInt hobig_int_new(unsigned long long int v);
 void     hobig_free(HoBigInt v);
 HoBigInt hobig_int_copy(HoBigInt v);
-HoBigInt hobig_int_new_from_memory(const char* m, int length);
+HoBigInt hobig_int_new_from_memory(const unsigned char* m, int length);
 HoBigInt hobig_int_new_decimal(const char* number, unsigned int* error);
 
 // Comparison

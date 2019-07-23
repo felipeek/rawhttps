@@ -19,7 +19,7 @@ static long long rawhttps_parser_fetch_next_chunk(rawhttps_http_parser_buffer* h
 	}
 
 	long long size_read;
-	if ((size_read = rawhttps_tls_read(ts, connected_socket, hpb->buffer + hpb->buffer_end)) == -1)
+	if ((size_read = rawhttps_tls_read(ts, connected_socket, (unsigned char*)hpb->buffer + hpb->buffer_end)) == -1)
 		return -1;
 	if (size_read == 0)
 	{
@@ -281,7 +281,8 @@ int rawhttps_parser_parse(rawhttps_http_parser_state* hps, rawhttps_request* req
 			return -1;
 		}
 
-		printf("Received header %.*s = %.*s\n", request_header_size, request_header, request_header_value_size, request_header_value);
+		printf("Received header %.*s = %.*s\n", (int)request_header_size, request_header,
+			(int)request_header_value_size, request_header_value);
 
 		if (rawhttps_header_put(&request->header, request_header, request_header_size, request_header_value, request_header_value_size))
 		{

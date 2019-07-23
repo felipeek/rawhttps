@@ -2,7 +2,7 @@
 #include "hobig.h"
 
 typedef struct {
-    char* data;
+    unsigned char* data;
     int   length;
     int   error;
 } Base64_Data;

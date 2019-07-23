@@ -1,6 +1,7 @@
 #include "http_handler_tree.h"
 #include "../common.h"
 #include <stdlib.h>
+#include <string.h>
 #define RAWHTTPS_HANDLER_TREE_INVALID_NEXT -1
 #define RAWHTTPS_HANDLER_TREE_INVALID_CHILD -1
 

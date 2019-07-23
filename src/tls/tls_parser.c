@@ -126,7 +126,7 @@ static long long tls_parser_get_next_available_bytes(rawhttps_tls_parser_state* 
 }
 
 // parses the next message into a tls_packet (packet parameter)
-int rawhttps_tls_parser_application_data_parse(char data[RECORD_PROTOCOL_TLS_PLAIN_TEXT_FRAGMENT_MAX_SIZE], long long* bytes_written,
+int rawhttps_tls_parser_application_data_parse(unsigned char data[RECORD_PROTOCOL_TLS_PLAIN_TEXT_FRAGMENT_MAX_SIZE], long long* bytes_written,
 	rawhttps_tls_parser_state* ps, int connected_socket, rawhttps_connection_state* client_cs)
 {
 	// If we have remainings from last parse, we have an error (forgot to clear buffer)

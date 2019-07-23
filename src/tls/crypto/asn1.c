@@ -39,7 +39,7 @@ int is_whitespace(char c) {
 Base64_Data 
 base64_decode(const u8* in, int length) {
     Base64_Data result = {0};
-    char* mem = calloc(4, length);
+    unsigned char* mem = calloc(4, length);
 
     int error = 0;
 
@@ -389,7 +389,7 @@ asn1_parse_pem_private(const u8* data, int length, int* error, int is_base64_enc
             return (PrivateKey){0};
         }
     } else {
-        r.data = (char*)data;
+        r.data = data;
         r.length = length;
     }
 
@@ -465,7 +465,7 @@ asn1_parse_pem_public(const u8* data, int length, int* error, int is_base64_enco
             return (PublicKey){0};
         }
     } else {
-        r.data = (char*)data;
+        r.data = data;
         r.length = length;
     }
 
@@ -526,11 +526,11 @@ asn1_parse_public_key(const u8* data, int length, int* error, int is_base64_enco
             if(error) *error |= 1;
         }
     } else {
-        r.data = (char*)data;
+        r.data = data;
         r.length = length;
     }
 
-    char* at = r.data;
+    unsigned char* at = r.data;
 
     // algorithm length
     int prefix_length = LITTLE_ENDIAN_32(*(int*)at);
@@ -694,7 +694,7 @@ asn1_parse_pem_certificate(const u8* data, int length, int* error, int is_base64
             if(error) *error |= 1;
         }
     } else {
-        r.data = (char*)data;
+        r.data = data;
         r.length = length;
     }
 
@@ -927,7 +927,7 @@ asn1_parse_pem_private_certificate_key(const unsigned char* data, int length_byt
             return (PrivateKey){0};
         }
     } else {
-        r.data = (char*)data;
+        r.data = data;
         r.length = length_bytes;
     }
 

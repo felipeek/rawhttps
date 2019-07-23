@@ -223,15 +223,8 @@ long long rawhttps_record_get(rawhttps_record_buffer* record_buffer, int connect
 // sends a single record packet to the client
 static int send_cipher_text(const unsigned char* cipher_text, int cipher_text_length, int connected_socket)
 {
-	struct iovec iov[2];
-	iov[0].iov_base = cipher_text;
-	iov[0].iov_len = cipher_text_length;
-
-	struct msghdr hdr = {0};
-	hdr.msg_iov = iov;
-	hdr.msg_iovlen = 1;
 	// MSG_NOSIGNAL to avoid SIGPIPE error
-	ssize_t written = sendmsg(connected_socket, &hdr, MSG_NOSIGNAL);
+	ssize_t written = send(connected_socket, cipher_text, cipher_text_length, MSG_NOSIGNAL);
 
 	if (written < 0)
 	{

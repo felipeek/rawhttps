@@ -138,7 +138,7 @@ u64 bigendian_word(u64 v) {
 }
 
 HoBigInt
-hobig_int_new_from_memory(const char* m, int length) {
+hobig_int_new_from_memory(const unsigned char* m, int length) {
     HoBigInt result = {0};
     if(length == 0) return result;
 
