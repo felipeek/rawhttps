@@ -4,6 +4,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
+#include "logger.h"
 
 rawhttps_server server;
 
@@ -69,6 +70,8 @@ int main(int argc, char** argv)
 	}
 
 	signal(SIGINT, close_server);
+
+	rawhttps_logger_level_set(LOGGER_LOG_LEVEL_DEBUG);
 
 	rawhttps_server_init(&server, 8080, argv[1], strlen(argv[1]), argv[2], strlen(argv[2]));
 

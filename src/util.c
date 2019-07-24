@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <memory.h>
 #include <stdio.h>
+#include "logger.h"
 
 void util_dynamic_buffer_new(dynamic_buffer* db, long long capacity)
 {
@@ -40,7 +41,7 @@ void util_buffer_print_hex(const unsigned char* msg, int size)
 		util_dynamic_buffer_add(&log_db, aux, s);
 	}
 
-	printf("%.*s\n", (int)log_db.size, log_db.buffer);
+	rawhttps_logger_log_info("%.*s", (int)log_db.size, log_db.buffer);
 	util_dynamic_buffer_free(&log_db);
 }
 

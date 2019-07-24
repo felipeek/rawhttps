@@ -1,6 +1,7 @@
 #include "tls_sender.h"
 #include "record.h"
 #include <stdlib.h>
+#include "../logger.h"
 
 #define MIN(a,b) (((a) < (b)) ? (a) : (b))
 
@@ -15,7 +16,10 @@ static int higher_layer_packet_send(rawhttps_connection_state* server_cs, const 
 		long long buffer_position = size - size_remaining;
 
 		if (rawhttps_record_send(server_cs, data + buffer_position, size_to_send, type, connected_socket))
+		{
+			rawhttps_logger_log_error("Error sending record data");
 			return -1;
+		}
 		size_remaining -= size_to_send;
 	}
 

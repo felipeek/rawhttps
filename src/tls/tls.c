@@ -11,6 +11,7 @@
 #include "crypto/crypto_hashes.h"
 #include "tls_sender.h"
 #include "crypto/hmac.h"
+#include "../logger.h"
 
 #define PRE_MASTER_SECRET_SIZE 48
 
@@ -74,12 +75,20 @@ int rawhttps_tls_state_create(rawhttps_tls_state* ts, const char* certificate_pa
 	security_parameters_set_for_cipher_suite(TLS_NULL_WITH_NULL_NULL, &ts->server_connection_state.security_parameters);
 	security_parameters_set_for_cipher_suite(TLS_NULL_WITH_NULL_NULL, &ts->pending_security_parameters);
 	util_dynamic_buffer_new(&ts->handshake_messages, 10 * 1024 /* @TODO: changeme */);
-	if (rawhttps_tls_parser_state_create(&ts->ps)) return -1;
-	// @TODO(psv): function below returns error.
+	if (rawhttps_tls_parser_state_create(&ts->ps)) {
+		rawhttps_logger_log_error("Error creating TLS parser state");
+		return -1;
+	}
 	ts->certificate = asn1_parse_pem_certificate_from_file(certificate_path, 0);
-	if (err) return -1;
+	if (err) {
+		rawhttps_logger_log_error("Error parsing PEM certificate from file (path: %s)", certificate_path);
+		return -1;
+	}
 	ts->private_key = asn1_parse_pem_private_certificate_key_from_file(private_key_path, &err);
-	if (err) return -1;
+	if (err) {
+		rawhttps_logger_log_error("Error parsing PEM private key from file (path: %s)", private_key_path);
+		return -1;
+	}
 	return 0;
 }
 
@@ -103,7 +112,10 @@ static int pre_master_secret_decrypt(PrivateKey* pk, unsigned char* result, unsi
 	int err = 0;
 	HoBigInt encrypted_big_int = hobig_int_new_from_memory(encrypted, length);
 	Decrypt_Data dd = decrypt_pkcs1_v1_5(*pk, encrypted_big_int, &err);
-	if (err) return -1;
+	if (err) {
+		rawhttps_logger_log_error("Error decrypting premaster secret");
+		return -1;
+	}
 	assert(dd.length == 48);	// RSA!
 	memcpy(result, dd.data, 48);
 	return 0;
@@ -186,7 +198,7 @@ static int cipher_suite_choose(cipher_suite_type* chosen_cipher_suite, const uns
 			if (current == client_cipher_suites[j])
 			{
 				*chosen_cipher_suite = current;
-				printf("Cipher chosen: 0x%04hX\n", *chosen_cipher_suite);
+				rawhttps_logger_log_info("Cipher 0x%04hX was chosen for the TLS connection.", *chosen_cipher_suite);
 				return 0;
 			}
 	}
@@ -228,8 +240,8 @@ static int handshake_client_hello_get(rawhttps_tls_state* ts, int connected_sock
 	*client_cipher_suites = malloc(p.message.chm.cipher_suites_length * 2);
 	memcpy(*client_cipher_suites, p.message.chm.cipher_suites, p.message.chm.cipher_suites_length * 2);
 	*client_cipher_suites_length = p.message.chm.cipher_suites_length;
-	printf("Printing client random number...\n");
-	util_buffer_print_hex(p.message.chm.client_random, (long long)CLIENT_RANDOM_SIZE);
+	//printf("Printing client random number...\n");
+	//util_buffer_print_hex(p.message.chm.client_random, (long long)CLIENT_RANDOM_SIZE);
 
 	rawhttps_tls_parser_handshake_packet_release(&p);
 
@@ -241,8 +253,8 @@ static int handshake_server_hello_send(rawhttps_tls_state* ts, int connected_soc
 	unsigned char server_random[SERVER_RANDOM_SIZE];
 	server_hello_random_number_generate(server_random);
 	memcpy(ts->pending_security_parameters.server_random, server_random, SERVER_RANDOM_SIZE);
-	printf("Printing server random number...\n");
-	util_buffer_print_hex(server_random, (long long)CLIENT_RANDOM_SIZE);
+	//printf("Printing server random number...\n");
+	//util_buffer_print_hex(server_random, (long long)CLIENT_RANDOM_SIZE);
 	if (rawhttps_tls_sender_handshake_server_hello_message_send(&ts->server_connection_state, connected_socket,
 		selected_cipher_suite, server_random, &ts->handshake_messages))
 		return -1;
@@ -305,15 +317,15 @@ static int handshake_client_key_exchange_get(rawhttps_tls_state* ts, int connect
 		return -1;
 	}
 
-	printf("Printing premaster secret...\n");
-	util_buffer_print_hex(pre_master_secret, (long long)PRE_MASTER_SECRET_SIZE);
+	//printf("Printing premaster secret...\n");
+	//util_buffer_print_hex(pre_master_secret, (long long)PRE_MASTER_SECRET_SIZE);
 
 	rsa_master_secret_generate(pre_master_secret, ts->pending_security_parameters.client_random,
 		ts->pending_security_parameters.server_random, master_secret);
 	memcpy(ts->pending_security_parameters.master_secret, master_secret, MASTER_SECRET_SIZE);
 
-	printf("Printing MASTER SECRET...");
-	util_buffer_print_hex(master_secret, MASTER_SECRET_SIZE);
+	//printf("Printing MASTER SECRET...");
+	//util_buffer_print_hex(master_secret, MASTER_SECRET_SIZE);
 
 	rawhttps_tls_parser_handshake_packet_release(&p);
 
@@ -416,35 +428,65 @@ int rawhttps_tls_handshake(rawhttps_tls_state* ts, int connected_socket)
 	unsigned short* client_cipher_suites;
 	unsigned short client_cipher_suites_length;
 	if (handshake_client_hello_get(ts, connected_socket, &client_cipher_suites, &client_cipher_suites_length))
+	{
+		rawhttps_logger_log_error("Error receiving CLIENT_HELLO message");
 		return -1;
+	}
 
 	cipher_suite_type chosen_cipher;
 	if (cipher_suite_choose(&chosen_cipher, client_cipher_suites, client_cipher_suites_length))
+	{
+		rawhttps_logger_log_error("Error selecting the cipher suite for TLS connection");
 		return -1;
+	}
 	
 	if (handshake_server_hello_send(ts, connected_socket, chosen_cipher))
+	{
+		rawhttps_logger_log_error("Error sending SERVER_HELLO message");
 		return -1;
+	}
 
 	if (handshake_certificate_send(ts, connected_socket))
+	{
+		rawhttps_logger_log_error("Error sending CERTIFICATE message");
 		return -1;
+	}
 	
 	if (handshake_server_hello_done_send(ts, connected_socket))
+	{
+		rawhttps_logger_log_error("Error sending SERVER_HELLO_DONE message");
 		return -1;
+	}
 
 	if (handshake_client_key_exchange_get(ts, connected_socket))
+	{
+		rawhttps_logger_log_error("Error receiving CLIENT_KEY_EXCHANGE message");
 		return -1;
+	}
 	
 	if (handshake_change_cipher_spec_get(ts, connected_socket))
+	{
+		rawhttps_logger_log_error("Error receiving CHANGE_CIPHER_SPEC");
 		return -1;
+	}
 
 	if (handshake_finished_get(ts, connected_socket))
+	{
+		rawhttps_logger_log_error("Error receiving FINISHED message");
 		return -1;
+	}
 
 	if (handshake_change_cipher_spec_send(ts, connected_socket))
+	{
+		rawhttps_logger_log_error("Error sending CHANGE_CIPHER_SPEC message");
 		return -1;
+	}
 	
 	if (handshake_finished_send(ts, connected_socket))
+	{
+		rawhttps_logger_log_error("Error sending FINISHED message");
 		return -1;
+	}
 
 	ts->handshake_completed = true;
 
@@ -464,17 +506,20 @@ long long rawhttps_tls_read(rawhttps_tls_state* ts, int connected_socket,
 	switch (type)
 	{
 		case HANDSHAKE_PROTOCOL: {
-			printf("Received handshake protocol inside tls_read\n");
+			rawhttps_logger_log_error("Received HANDSHAKE protocol inside tls_read");
 			return -1;
 		} break;
 		case CHANGE_CIPHER_SPEC_PROTOCOL: {
-			printf("Received change cipher spec protocol inside tls_read\n");
+			rawhttps_logger_log_error("Received CHANGE_CIPHER_SPEC protocol inside tls_read");
 			return -1;
 		} break;
 		case APPLICATION_DATA_PROTOCOL: {
 			long long bytes_written;
 			if (rawhttps_tls_parser_application_data_parse(data, &bytes_written, &ts->ps, connected_socket, &ts->client_connection_state))
+			{
+				rawhttps_logger_log_error("Error parsing application data");
 				return -1;
+			}
 			return bytes_written;
 		} break;
 	}

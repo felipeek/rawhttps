@@ -2,6 +2,7 @@
 #include "../common.h"
 #include <stdlib.h>
 #include <string.h>
+#include "../logger.h"
 #define RAWHTTPS_HANDLER_TREE_INVALID_NEXT -1
 #define RAWHTTPS_HANDLER_TREE_INVALID_CHILD -1
 
@@ -127,7 +128,10 @@ int rawhttps_handler_tree_put(rawhttps_handler_tree* tree, const char* pattern, 
 			if (pattern_level == pattern_total_levels - 1)
 			{
 				if (current_element->has_handler)
+				{
+					rawhttps_logger_log_error("Handler already registered for received pattern.");
 					return -1;
+				}
 				else
 				{
 					current_element->has_handler = true;

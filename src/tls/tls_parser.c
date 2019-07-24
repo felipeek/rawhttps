@@ -14,6 +14,7 @@
 #include <string.h>
 #include <assert.h>
 #include "record.h"
+#include "../logger.h"
 
 #define RAWHTTPS_PARSER_CHUNK_SIZE 1024
 #define RAWHTTPS_PARSER_REQUEST_HEADER_DEFAULT_CAPACITY 16
@@ -78,9 +79,15 @@ static long long tls_parser_fetch_next_record(rawhttps_tls_parser_state* ps, int
 	long long size_read;
 	if ((size_read = rawhttps_record_get(&ps->record_buffer, connected_socket,
 		ps->higher_layer_buffer.buffer + ps->higher_layer_buffer.buffer_end, &ps->type, client_cs)) < 0)
+	{
+		rawhttps_logger_log_error("Error getting next record data");
 		return -1;
+	}
 	if (size_read == 0)
+	{
+		rawhttps_logger_log_error("Error getting next record data (size_read == 0)");
 		return -1;
+	}
 	ps->higher_layer_buffer.buffer_end += size_read;
 
 	return size_read;

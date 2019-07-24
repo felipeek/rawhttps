@@ -13,6 +13,7 @@
 #include "crypto/crypto_hashes.h"
 #include "crypto/hmac.h"
 #include "protocol.h"
+#include "../logger.h"
 
 #define RECORD_PARSER_CHUNK_SIZE 1024
 #define RECORD_BUFFER_INITIAL_SIZE 1024
@@ -63,9 +64,15 @@ static long long record_fetch_next_tcp_chunk(rawhttps_record_buffer* record_buff
 
 	long long size_read;
 	if ((size_read = read(connected_socket, record_buffer->buffer + record_buffer->buffer_end, RECORD_PARSER_CHUNK_SIZE)) < 0)
+	{
+		rawhttps_logger_log_error("Error reading data from connection socket: %s", strerror(errno));
 		return -1;
+	}
 	if (size_read == 0)
+	{
+		rawhttps_logger_log_error("Error reading data from connection socket: (size_read == 0)");
 		return -1;
+	}
 	record_buffer->buffer_end += size_read;
 
 	return size_read;
@@ -124,17 +131,15 @@ static int cipher_stream_decrypt(const rawhttps_connection_state* client_cs, uns
 			memcpy(result, record_data, record_data_length);
 			return record_data_length;
 		} break;
-		case BULK_CIPHER_ALGORITHM_AES: {
-			return -1;
-		} break;
-		case BULK_CIPHER_ALGORITHM_DES: {
-			return -1;
-		} break;
+		case BULK_CIPHER_ALGORITHM_AES:
+		case BULK_CIPHER_ALGORITHM_DES:
 		case BULK_CIPHER_ALGORITHM_RC4: {
+			rawhttps_logger_log_error("Error decrypting cipher stream: bulk cipher algorithm not supported");
 			return -1;
 		} break;
 	}
 
+	rawhttps_logger_log_error("Error decrypting cipher stream: bulk cipher algorithm not supported");
 	return -1;
 }
 
@@ -143,9 +148,6 @@ static int cipher_block_decrypt(const rawhttps_connection_state* client_cs, unsi
 {
 	switch(client_cs->security_parameters.bulk_cipher_algorithm)
 	{
-		case BULK_CIPHER_ALGORITHM_NULL: {
-			return -1;
-		} break;
 		case BULK_CIPHER_ALGORITHM_AES: {
 			unsigned char record_iv_length = client_cs->security_parameters.record_iv_length;
 			unsigned short record_data_without_iv_length = record_data_length - (unsigned char)record_iv_length;
@@ -161,14 +163,15 @@ static int cipher_block_decrypt(const rawhttps_connection_state* client_cs, unsi
 			unsigned char padding_length = result[record_data_without_iv_length - 1];
 			return record_data_without_iv_length - client_cs->security_parameters.mac_length - padding_length - 1;
 		} break;
-		case BULK_CIPHER_ALGORITHM_DES: {
-			return -1;
-		} break;
+		case BULK_CIPHER_ALGORITHM_NULL:
+		case BULK_CIPHER_ALGORITHM_DES:
 		case BULK_CIPHER_ALGORITHM_RC4: {
+			rawhttps_logger_log_error("Error decrypting cipher block: bulk cipher algorithm not supported");
 			return -1;
 		} break;
 	}
 	
+	rawhttps_logger_log_error("Error decrypting cipher block: bulk cipher algorithm not supported");
 	return -1;
 }
 
@@ -185,10 +188,12 @@ static int record_data_decrypt(const rawhttps_connection_state* client_cs, unsig
 			return cipher_block_decrypt(client_cs, record_data, record_data_length, result);
 		} break;
 		case CIPHER_AEAD: {
+			rawhttps_logger_log_error("Error decrypting record data: cipher type not supported");
 			return -1;
 		}
 	}
 
+	rawhttps_logger_log_error("Error decrypting record data: cipher type not supported");
 	return -1;
 }
 
@@ -228,7 +233,7 @@ static int send_cipher_text(const unsigned char* cipher_text, int cipher_text_le
 
 	if (written < 0)
 	{
-		printf("Error sending record: %s\n", strerror(errno));
+		rawhttps_logger_log_error("Error sending record: %s", strerror(errno));
 		return -1;
 	}
 
@@ -236,7 +241,10 @@ static int send_cipher_text(const unsigned char* cipher_text, int cipher_text_le
 	// we should look at writev() documentation and decide what to do in this particular case
 	// for now, throw an error...
 	if (written != cipher_text_length)
+	{
+		rawhttps_logger_log_error("Error sending record: (written != cipher_text_length)");
 		return -1;
+	}
 	
 	return 0;
 }
@@ -250,17 +258,15 @@ static int cipher_stream_encrypt(const rawhttps_connection_state* server_cs, uns
 		case BULK_CIPHER_ALGORITHM_NULL: {
 			return 0;
 		} break;
-		case BULK_CIPHER_ALGORITHM_AES: {
-			return -1;
-		} break;
-		case BULK_CIPHER_ALGORITHM_DES: {
-			return -1;
-		} break;
+		case BULK_CIPHER_ALGORITHM_AES:
+		case BULK_CIPHER_ALGORITHM_DES:
 		case BULK_CIPHER_ALGORITHM_RC4: {
+			rawhttps_logger_log_error("Error encrypting cipher stream: bulk cipher algorithm not supported");
 			return -1;
 		} break;
 	}
 
+	rawhttps_logger_log_error("Error encrypting cipher stream: bulk cipher algorithm not supported");
 	return -1;
 }
 
@@ -270,9 +276,6 @@ static int cipher_block_encrypt(rawhttps_connection_state* server_cs, unsigned c
 	// Structure defined in: https://tools.ietf.org/html/rfc5246#section-6.2.3.2
 	switch(server_cs->security_parameters.bulk_cipher_algorithm)
 	{
-		case BULK_CIPHER_ALGORITHM_NULL: {
-			return -1;
-		} break;
 		case BULK_CIPHER_ALGORITHM_AES: {
 			// Encrypt data
 			unsigned char* iv = cipher_text + RECORD_PROTOCOL_TLS_HEADER_SIZE;
@@ -287,14 +290,15 @@ static int cipher_block_encrypt(rawhttps_connection_state* server_cs, unsigned c
 			}
 			return 0;
 		} break;
-		case BULK_CIPHER_ALGORITHM_DES: {
-			return -1;
-		} break;
+		case BULK_CIPHER_ALGORITHM_NULL:
+		case BULK_CIPHER_ALGORITHM_DES:
 		case BULK_CIPHER_ALGORITHM_RC4: {
+			rawhttps_logger_log_error("Error encrypting cipher block: bulk cipher algorithm not supported");
 			return -1;
 		} break;
 	}
 
+	rawhttps_logger_log_error("Error encrypting cipher block: bulk cipher algorithm not supported");
 	return -1;
 }
 
@@ -310,9 +314,12 @@ static int encrypt_tls_cipher_text_fragment(rawhttps_connection_state* server_cs
 			return cipher_block_encrypt(server_cs, cipher_text, cipher_text_length);
 		} break;
 		case CIPHER_AEAD: {
+			rawhttps_logger_log_error("Error encrypting cipher text fragment: cipher type not supported");
 			return -1;
 		} break;
 	}
+
+	rawhttps_logger_log_error("Error encrypting cipher text fragment: cipher type not supported");
 	return -1;
 }
 
@@ -327,12 +334,6 @@ static int mac(const rawhttps_connection_state* server_cs, const unsigned char* 
 {
 	switch(server_cs->security_parameters.mac_algorithm)
 	{
-		case MAC_ALGORITHM_NULL: {
-			return -1;
-		} break;
-		case MAC_ALGORITHM_HMAC_MD5: {
-			return -1;
-		} break;
 		case MAC_ALGORITHM_HMAC_SHA1: {
 			hmac(sha1, server_cs->mac_key, server_cs->security_parameters.mac_length, mac_message, mac_message_length, result,
 				server_cs->security_parameters.mac_length);
@@ -343,13 +344,16 @@ static int mac(const rawhttps_connection_state* server_cs, const unsigned char* 
 				server_cs->security_parameters.mac_length);
 			return 0;
 		} break;
-		case MAC_ALGORITHM_HMAC_SHA384: {
-			return -1;
-		} break;
+		case MAC_ALGORITHM_NULL:
+		case MAC_ALGORITHM_HMAC_MD5:
+		case MAC_ALGORITHM_HMAC_SHA384:
 		case MAC_ALGORITHM_HMAC_SHA512: {
+			rawhttps_logger_log_error("Error calculating MAC: mac algorithm not supported");
 			return -1;
 		} break;
 	}
+
+	rawhttps_logger_log_error("Error calculating MAC: mac algorithm not supported");
 	return -1;
 }
 
@@ -423,11 +427,12 @@ static int build_tls_cipher_text(const rawhttps_connection_state* server_cs, con
 			return cipher_text_size;
 		} break;
 		case CIPHER_AEAD: {
-			printf("Cipher type not supported\n");
+			rawhttps_logger_log_error("Error building cipher text: cipher type not supported");
 			return -1;
 		} break;
 	}
 
+	rawhttps_logger_log_error("Error building cipher text: cipher type not supported");
 	return -1;
 }
 
@@ -437,15 +442,21 @@ int rawhttps_record_send(rawhttps_connection_state* server_cs, const unsigned ch
 	unsigned char cipher_text[RECORD_PROTOCOL_TLS_CIPHER_TEXT_MAX_SIZE];
 	int cipher_text_length;
 	if ((cipher_text_length = build_tls_cipher_text(server_cs, data, data_length, type, cipher_text)) == -1)
+	{
+		rawhttps_logger_log_error("Error building TLS cipher text");
 		return -1;
+	}
 
 	if (encrypt_tls_cipher_text_fragment(server_cs, cipher_text, cipher_text_length))
+	{
+		rawhttps_logger_log_error("Error encrypting TLS cipher text fragment");
 		return -1;
+	}
 
 	// Send record packet
 	if (send_cipher_text(cipher_text, cipher_text_length, connected_socket))
 	{
-		printf("Error sending cipher text\n");
+		rawhttps_logger_log_error("Error sending TLS cipher text");
 		return -1;
 	}
 

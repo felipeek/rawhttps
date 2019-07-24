@@ -6,6 +6,7 @@
 #include <stdlib.h>
 #include <memory.h>
 #include "../tls/tls.h"
+#include "../logger.h"
 
 #define RAWHTTP_PARSER_REQUEST_HEADER_DEFAULT_CAPACITY 16
 
@@ -20,16 +21,18 @@ static long long rawhttps_parser_fetch_next_chunk(rawhttps_http_parser_buffer* h
 
 	long long size_read;
 	if ((size_read = rawhttps_tls_read(ts, connected_socket, (unsigned char*)hpb->buffer + hpb->buffer_end)) == -1)
+	{
+		rawhttps_logger_log_error("Error fetching next HTTP chunk from TLS layer.");
 		return -1;
+	}
 	if (size_read == 0)
 	{
-		// TODO
-		printf("TODO ...");
+		rawhttps_logger_log_error("Error fetching next HTTP chunk from TLS layer. (size_read == 0)");
 		return -1;
 	}
 	hpb->buffer_end += size_read;
 
-	printf("Fetched %lld bytes from client.\n", size_read);
+	rawhttps_logger_log_debug("Fetched %lld bytes from TLS layer", size_read);
 	return size_read;
 }
 
@@ -162,6 +165,7 @@ static int rawhttps_parser_get_request_header(rawhttps_http_parser_buffer* hpb, 
 	if (*ptr != '\n')
 	{
 		// error!
+		rawhttps_logger_log_error("Error parsing HTTP request header: missing \\n");
 		return -1;
 	}
 
@@ -210,7 +214,10 @@ int rawhttps_parser_parse(rawhttps_http_parser_state* hps, rawhttps_request* req
 	request->connected_socket = connected_socket;
 
 	if (rawhttps_header_create(&request->header, RAWHTTP_PARSER_REQUEST_HEADER_DEFAULT_CAPACITY))
+	{
+		rawhttps_logger_log_error("Error creating new HTTP header");
 		return -1;
+	}
 
 	// First we get the HTTP method
 	long long http_method_size;
@@ -218,6 +225,7 @@ int rawhttps_parser_parse(rawhttps_http_parser_state* hps, rawhttps_request* req
 	if (rawhttps_parser_get_next_string(&hps->hpb, connected_socket, &http_method, &http_method_size))
 	{
 		rawhttps_header_destroy(&request->header);
+		rawhttps_logger_log_error("Error parsing HTTP method");
 		return -1;
 	}
 	
@@ -248,6 +256,7 @@ int rawhttps_parser_parse(rawhttps_http_parser_state* hps, rawhttps_request* req
 	if (rawhttps_parser_get_next_string(&hps->hpb, connected_socket, &uri, &uri_size))
 	{
 		rawhttps_header_destroy(&request->header);
+		rawhttps_logger_log_error("Error parsing HTTP URI");
 		return -1;
 	}
 	request->uri = uri;
@@ -261,6 +270,7 @@ int rawhttps_parser_parse(rawhttps_http_parser_state* hps, rawhttps_request* req
 	if (rawhttps_parser_get_next_string(&hps->hpb, connected_socket, &version, &version_size))
 	{
 		rawhttps_header_destroy(&request->header);
+		rawhttps_logger_log_error("Error parsing HTTP version");
 		return -1;
 	}
 
@@ -278,15 +288,17 @@ int rawhttps_parser_parse(rawhttps_http_parser_state* hps, rawhttps_request* req
 			&request_header_value, &request_header_value_size))
 		{
 			rawhttps_header_destroy(&request->header);
+			rawhttps_logger_log_error("Error parsing HTTP request header");
 			return -1;
 		}
 
-		printf("Received header %.*s = %.*s\n", (int)request_header_size, request_header,
+		rawhttps_logger_log_debug("Received header %.*s = %.*s", (int)request_header_size, request_header,
 			(int)request_header_value_size, request_header_value);
 
 		if (rawhttps_header_put(&request->header, request_header, request_header_size, request_header_value, request_header_value_size))
 		{
 			rawhttps_header_destroy(&request->header);
+			rawhttps_logger_log_error("Error putting into HTTP header");
 			return -1;
 		}
 	}

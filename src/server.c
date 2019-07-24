@@ -22,6 +22,7 @@
 #include <unistd.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include "logger.h"
 #include "http/http_parser.h"
 
 #define RAWHTTPS_SERVER_MAX_QUEUE_SERVER_PENDING_CONNECTIONS 5
@@ -42,6 +43,12 @@ int rawhttps_server_init(rawhttps_server* server, int port, const char* certific
 
 	server->sockfd = socket(AF_INET, SOCK_STREAM, 0);
 
+	if (server->sockfd == -1)
+	{
+		rawhttps_logger_log_error("Error creating server socket: %s", strerror(errno));
+		return -1;
+	}
+
 	// workaround for dev purposes (avoiding error binding socket: Address already in use)
 	int option = 1;
 	setsockopt(server->sockfd, SOL_SOCKET, SO_REUSEADDR, &option, sizeof(option));
@@ -52,10 +59,6 @@ int rawhttps_server_init(rawhttps_server* server, int port, const char* certific
 	int keepalive = 1;
 	setsockopt(server->sockfd, SOL_SOCKET, SO_KEEPALIVE, &keepalive , sizeof(keepalive ));
 
-
-	if (server->sockfd == -1)
-		return -1;
-
 	struct sockaddr_in server_address;
 	memset(&server_address, 0, sizeof(struct sockaddr_in));
 	server_address.sin_family = AF_INET;
@@ -63,7 +66,10 @@ int rawhttps_server_init(rawhttps_server* server, int port, const char* certific
 	server_address.sin_port = htons(port);
 
 	if (bind(server->sockfd, (struct sockaddr*)&server_address, sizeof(server_address)) == -1)
+	{
+		rawhttps_logger_log_error("Error binding server socket: %s", strerror(errno));
 		return -1;
+	}
 
 	server->port = port;
 	server->initialized = true;
@@ -96,14 +102,17 @@ static void* rawhttps_server_new_connection_callback(void* arg)
 {
 	rawhttps_connection* connection = (rawhttps_connection*)arg;
 	char* client_ip_ascii = inet_ntoa(connection->client_address.sin_addr);
+	rawhttps_logger_log_info("Connection established with client %s.", client_ip_ascii);
 
 	rawhttps_tls_state ts;
 	if (rawhttps_tls_state_create(&ts, connection->server->certificate_path, connection->server->private_key_path))
+	{
+		rawhttps_logger_log_error("Error creating tls state");
 		return NULL;
+	}
 	if (rawhttps_tls_handshake(&ts, connection->connected_socket))
 	{
-		printf("Error in TLS handshake\n");
-		printf("Connection with client %s will be destroyed\n", client_ip_ascii);
+		rawhttps_logger_log_error("Error in TLS handshake. Connection with client %s will be destroyed.", client_ip_ascii);
 		rawhttps_tls_state_destroy(&ts);
 		return NULL;
 	}
@@ -113,22 +122,20 @@ static void* rawhttps_server_new_connection_callback(void* arg)
 	rawhttps_http_parser_state_create(&hps, &ts);
 	if (rawhttps_parser_parse(&hps, &request, connection->connected_socket))
 	{
-		printf("Error parsing HTTP packet. Connection was dropped or syntax was invalid");
-		printf("Connection with client %s will be destroyed", client_ip_ascii);
+		rawhttps_logger_log_error("Error parsing HTTP packet. Connection was dropped or syntax was invalid. Connection with client %s will be destroyed.", client_ip_ascii);
 		return NULL;
 	}
 
 	const rawhttps_server_handler* handler = rawhttps_handler_tree_get(&connection->server->handlers, request.uri, request.uri_size);
 	if (handler)
 	{
-		printf("calling handler for uri %.*s\n", (int)request.uri_size, request.uri);
 		rawhttps_response response;
 		if (rawhttps_response_new(&response))
 		{
-			printf("Error creating new rawhttps_response");
 			rawhttps_header_destroy(&request.header);
 			rawhttps_http_parser_state_destroy(&hps);
 			rawhttps_tls_state_destroy(&ts);
+			rawhttps_logger_log_error("Error creating new HTTP response");
 			return NULL;
 		}
 		rawhttps_response_connection_information rci;
@@ -137,10 +144,10 @@ static void* rawhttps_server_new_connection_callback(void* arg)
 		handler->handle(&rci, &request, &response);
 		if (rawhttps_response_destroy(&response))
 		{
-			printf("Error destroying rawhttps_response");
 			rawhttps_header_destroy(&request.header);
 			rawhttps_http_parser_state_destroy(&hps);
 			rawhttps_tls_state_destroy(&ts);
+			rawhttps_logger_log_error("Error destroying HTTP response");
 			return NULL;
 		}
 	}
@@ -159,14 +166,17 @@ static void* rawhttps_server_new_connection_callback(void* arg)
 
 	close(connection->connected_socket);
 	free(connection);
-	printf("Destroyed connection from client %s", client_ip_ascii);
+	rawhttps_logger_log_info("Connection with client %s was closed successfully.", client_ip_ascii);
 	return NULL;
 }
 
 int rawhttps_server_listen(rawhttps_server* server)
 {
 	if (listen(server->sockfd, RAWHTTPS_SERVER_MAX_QUEUE_SERVER_PENDING_CONNECTIONS) == -1)
+	{
+		rawhttps_logger_log_error("Error listening to server socket: %s", strerror(errno));
 		return -1;
+	}
 
 	struct sockaddr_in client_address;
 
@@ -178,6 +188,7 @@ int rawhttps_server_listen(rawhttps_server* server)
 		{
 			if (errno == EBADF)
 				return 0; // Server socket was closed. Exiting gracefully..
+			rawhttps_logger_log_error("Error accepting connected socket: %s", strerror(errno));
 			return -1;
 		}
 
@@ -187,7 +198,10 @@ int rawhttps_server_listen(rawhttps_server* server)
 		connection->connected_socket = connected_socket;
 		connection->client_address = client_address;
 		if (pthread_create(&connection_thread, NULL, rawhttps_server_new_connection_callback, connection))
+		{
+			rawhttps_logger_log_error("Error creating thread for new connection: %s", strerror(errno));
 			return -1;
+		}
 	}
 
 	return 0;
