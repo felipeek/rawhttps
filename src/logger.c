@@ -7,7 +7,6 @@
 
 static enum Log_Level log_level = LOGGER_LOG_LEVEL_ERROR;
 static pthread_mutex_t log_mutex;
-static int log_mutex_initialized = 0;
 
 void rawhttps_logger_init(enum Log_Level level)
 {
@@ -17,9 +16,6 @@ void rawhttps_logger_init(enum Log_Level level)
 
 static void logger_log_out(FILE* target, const char* level, const char* format, va_list argptr)
 {
-	if (!log_mutex_initialized)
-		pthread_mutex_init(&log_mutex, NULL);
-
     size_t needed = snprintf(NULL, 0, "[%s] %s\n", level, format) + 1;
     char* buf = malloc(needed);
     sprintf(buf, "[%s] %s\n", level, format);
