@@ -5,7 +5,7 @@
 typedef struct {
     char* data;
     int   length;
-} Decrypt_Data;
+} rawhttps_decrypt_data;
 
-Decrypt_Data decrypt_pkcs1_v1_5(PrivateKey pk, HoBigInt encrypted, int* error);
-HoBigInt encrypt_pkcs1_v1_5(PublicKey pk, const char* in, int length_bytes);
+rawhttps_decrypt_data decrypt_pkcs1_v1_5(rawhttps_private_key pk, rawhttps_ho_big_int encrypted, int* error);
+rawhttps_ho_big_int encrypt_pkcs1_v1_5(rawhttps_public_key pk, const char* in, int length_bytes);

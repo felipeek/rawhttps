@@ -64,7 +64,7 @@ static void security_parameters_set_for_cipher_suite(cipher_suite_type cipher_su
 static void prf(const unsigned char* secret, int secret_length, const char* label, int label_length,
     const unsigned char* seed, int seed_length, unsigned char* result, int result_length)
 {
-	prf12(sha256, 32, secret, secret_length, label, label_length, seed, seed_length, result, result_length);
+	rawhttps_prf12(rawhttps_sha256, 32, secret, secret_length, label, label_length, seed, seed_length, result, result_length);
 }
 
 int rawhttps_tls_state_create(rawhttps_tls_state* ts, const char* certificate_path, const char* private_key_path)
@@ -74,7 +74,7 @@ int rawhttps_tls_state_create(rawhttps_tls_state* ts, const char* certificate_pa
 	security_parameters_set_for_cipher_suite(TLS_NULL_WITH_NULL_NULL, &ts->client_connection_state.security_parameters);
 	security_parameters_set_for_cipher_suite(TLS_NULL_WITH_NULL_NULL, &ts->server_connection_state.security_parameters);
 	security_parameters_set_for_cipher_suite(TLS_NULL_WITH_NULL_NULL, &ts->pending_security_parameters);
-	util_dynamic_buffer_new(&ts->handshake_messages, 10 * 1024 /* @TODO: changeme */);
+	rawhttps_util_dynamic_buffer_new(&ts->handshake_messages, 10 * 1024 /* @TODO: changeme */);
 	if (rawhttps_tls_parser_state_create(&ts->ps)) {
 		rawhttps_logger_log_error("Error creating TLS parser state");
 		return -1;
@@ -94,7 +94,7 @@ int rawhttps_tls_state_create(rawhttps_tls_state* ts, const char* certificate_pa
 
 void rawhttps_tls_state_destroy(rawhttps_tls_state* ts)
 {
-	util_dynamic_buffer_free(&ts->handshake_messages);
+	rawhttps_util_dynamic_buffer_free(&ts->handshake_messages);
 	rawhttps_tls_parser_state_destroy(&ts->ps);
 }
 
@@ -107,11 +107,11 @@ static void server_hello_random_number_generate(unsigned char server_random[32])
 		server_random[i] = i;
 }
 
-static int pre_master_secret_decrypt(PrivateKey* pk, unsigned char* result, unsigned char* encrypted, int length)
+static int pre_master_secret_decrypt(rawhttps_private_key* pk, unsigned char* result, unsigned char* encrypted, int length)
 {
 	int err = 0;
-	HoBigInt encrypted_big_int = hobig_int_new_from_memory(encrypted, length);
-	Decrypt_Data dd = decrypt_pkcs1_v1_5(*pk, encrypted_big_int, &err);
+	rawhttps_ho_big_int encrypted_big_int = hobig_int_new_from_memory(encrypted, length);
+	rawhttps_decrypt_data dd = decrypt_pkcs1_v1_5(*pk, encrypted_big_int, &err);
 	if (err) {
 		rawhttps_logger_log_error("Error decrypting premaster secret");
 		return -1;
@@ -169,11 +169,11 @@ static void pending_client_cipher_apply(rawhttps_tls_state* ts)
 {
 	connection_state_from_security_parameters_generate(&ts->pending_security_parameters, &ts->client_connection_state, CONNECTION_END_CLIENT);
 	rawhttps_logger_log_debug("Client cipher was applied");
-	rawhttps_logger_log_hex(LOGGER_LOG_LEVEL_DEBUG, "Client Mac Key", ts->client_connection_state.mac_key,
+	rawhttps_logger_log_hex(RAWHTTPS_LOG_LEVEL_DEBUG, "Client Mac Key", ts->client_connection_state.mac_key,
 		ts->client_connection_state.security_parameters.mac_key_length);
-	rawhttps_logger_log_hex(LOGGER_LOG_LEVEL_DEBUG, "Client Enc Key", ts->client_connection_state.cipher_state.enc_key,
+	rawhttps_logger_log_hex(RAWHTTPS_LOG_LEVEL_DEBUG, "Client Enc Key", ts->client_connection_state.cipher_state.enc_key,
 		ts->client_connection_state.security_parameters.enc_key_length);
-	rawhttps_logger_log_hex(LOGGER_LOG_LEVEL_DEBUG, "Client Fixed IV", ts->client_connection_state.cipher_state.iv,
+	rawhttps_logger_log_hex(RAWHTTPS_LOG_LEVEL_DEBUG, "Client Fixed IV", ts->client_connection_state.cipher_state.iv,
 		ts->client_connection_state.security_parameters.fixed_iv_length);
 }
 
@@ -181,23 +181,23 @@ static void pending_server_cipher_apply(rawhttps_tls_state* ts)
 {
 	connection_state_from_security_parameters_generate(&ts->pending_security_parameters, &ts->server_connection_state, CONNECTION_END_SERVER);
 	rawhttps_logger_log_debug("Server cipher was applied");
-	rawhttps_logger_log_hex(LOGGER_LOG_LEVEL_DEBUG, "Server Mac Key", ts->server_connection_state.mac_key,
+	rawhttps_logger_log_hex(RAWHTTPS_LOG_LEVEL_DEBUG, "Server Mac Key", ts->server_connection_state.mac_key,
 		ts->server_connection_state.security_parameters.mac_key_length);
-	rawhttps_logger_log_hex(LOGGER_LOG_LEVEL_DEBUG, "Server Enc Key", ts->server_connection_state.cipher_state.enc_key,
+	rawhttps_logger_log_hex(RAWHTTPS_LOG_LEVEL_DEBUG, "Server Enc Key", ts->server_connection_state.cipher_state.enc_key,
 		ts->server_connection_state.security_parameters.enc_key_length);
-	rawhttps_logger_log_hex(LOGGER_LOG_LEVEL_DEBUG, "Server Fixed IV", ts->server_connection_state.cipher_state.iv,
+	rawhttps_logger_log_hex(RAWHTTPS_LOG_LEVEL_DEBUG, "Server Fixed IV", ts->server_connection_state.cipher_state.iv,
 		ts->server_connection_state.security_parameters.fixed_iv_length);
 
 	// Reset security parameters
 	security_parameters_set_for_cipher_suite(TLS_NULL_WITH_NULL_NULL, &ts->pending_security_parameters);
 }
 
-static void verify_data_generate(const dynamic_buffer* all_handshake_messages, unsigned char master_secret[MASTER_SECRET_SIZE],
+static void verify_data_generate(const rawhttps_util_dynamic_buffer* all_handshake_messages, unsigned char master_secret[MASTER_SECRET_SIZE],
 	unsigned char verify_data[12])
 {
 	// @TODO: check these hardcoded lengths and create constants if possible
 	unsigned char handshake_messages_hash[32];
-	sha256(all_handshake_messages->buffer, all_handshake_messages->size, handshake_messages_hash);
+	rawhttps_sha256(all_handshake_messages->buffer, all_handshake_messages->size, handshake_messages_hash);
 
 	prf(master_secret, MASTER_SECRET_SIZE, "server finished", sizeof("server finished") - 1, handshake_messages_hash, 32, verify_data, 12);
 }
@@ -255,7 +255,7 @@ static int handshake_client_hello_get(rawhttps_tls_state* ts, int connected_sock
 	*client_cipher_suites = malloc(p.message.chm.cipher_suites_length * 2);
 	memcpy(*client_cipher_suites, p.message.chm.cipher_suites, p.message.chm.cipher_suites_length * 2);
 	*client_cipher_suites_length = p.message.chm.cipher_suites_length;
-	rawhttps_logger_log_hex(LOGGER_LOG_LEVEL_DEBUG, "Client Random", ts->pending_security_parameters.client_random,
+	rawhttps_logger_log_hex(RAWHTTPS_LOG_LEVEL_DEBUG, "Client Random", ts->pending_security_parameters.client_random,
 		(long long)CLIENT_RANDOM_SIZE);
 
 	rawhttps_tls_parser_handshake_packet_release(&p);
@@ -268,7 +268,7 @@ static int handshake_server_hello_send(rawhttps_tls_state* ts, int connected_soc
 	unsigned char server_random[SERVER_RANDOM_SIZE];
 	server_hello_random_number_generate(server_random);
 	memcpy(ts->pending_security_parameters.server_random, server_random, SERVER_RANDOM_SIZE);
-	rawhttps_logger_log_hex(LOGGER_LOG_LEVEL_DEBUG, "Server Random", ts->pending_security_parameters.server_random,
+	rawhttps_logger_log_hex(RAWHTTPS_LOG_LEVEL_DEBUG, "Server Random", ts->pending_security_parameters.server_random,
 		(long long)SERVER_RANDOM_SIZE);
 	if (rawhttps_tls_sender_handshake_server_hello_message_send(&ts->server_connection_state, connected_socket,
 		selected_cipher_suite, server_random, &ts->handshake_messages))
@@ -332,13 +332,13 @@ static int handshake_client_key_exchange_get(rawhttps_tls_state* ts, int connect
 		return -1;
 	}
 
-	rawhttps_logger_log_hex(LOGGER_LOG_LEVEL_DEBUG, "Decrypted PreMasterSecret", pre_master_secret, (long long)PRE_MASTER_SECRET_SIZE);
+	rawhttps_logger_log_hex(RAWHTTPS_LOG_LEVEL_DEBUG, "Decrypted PreMasterSecret", pre_master_secret, (long long)PRE_MASTER_SECRET_SIZE);
 
 	rsa_master_secret_generate(pre_master_secret, ts->pending_security_parameters.client_random,
 		ts->pending_security_parameters.server_random, master_secret);
 	memcpy(ts->pending_security_parameters.master_secret, master_secret, MASTER_SECRET_SIZE);
 
-	rawhttps_logger_log_hex(LOGGER_LOG_LEVEL_DEBUG, "Master Secret", master_secret, (long long)MASTER_SECRET_SIZE);
+	rawhttps_logger_log_hex(RAWHTTPS_LOG_LEVEL_DEBUG, "Master Secret", master_secret, (long long)MASTER_SECRET_SIZE);
 
 	rawhttps_tls_parser_handshake_packet_release(&p);
 

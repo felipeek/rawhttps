@@ -5,24 +5,24 @@ typedef struct {
     unsigned char* data;
     int   length;
     int   error;
-} Base64_Data;
+} rawhttps_base64_data;
 
-Base64_Data base64_decode(const unsigned char* in, int length);
-
-typedef struct {
-    HoBigInt E; // public exponent
-    HoBigInt N; // public modulus
-} PublicKey;
+rawhttps_base64_data rawhttps_base64_decode(const unsigned char* in, int length);
 
 typedef struct {
-    PublicKey public;
-    HoBigInt  P;
-    HoBigInt  Q;
-    HoBigInt  PrivateExponent;
-    HoBigInt  DP;
-    HoBigInt  DQ;
-    HoBigInt  QINV;
-} PrivateKey;
+    rawhttps_ho_big_int E; // public exponent
+    rawhttps_ho_big_int N; // public modulus
+} rawhttps_public_key;
+
+typedef struct {
+    rawhttps_public_key public;
+    rawhttps_ho_big_int  P;
+    rawhttps_ho_big_int  Q;
+    rawhttps_ho_big_int  PrivateExponent;
+    rawhttps_ho_big_int  DP;
+    rawhttps_ho_big_int  DQ;
+    rawhttps_ho_big_int  QINV;
+} rawhttps_private_key;
 
 typedef enum {
     Sig_RSA,
@@ -39,51 +39,51 @@ typedef enum {
     Sig_ECDSAWithSHA256,
     Sig_ECDSAWithSHA384,
     Sig_ECDSAWithSHA512,
-} Signature_Algorithm;
+} rawhttps_signature_algorithm;
 
 typedef struct {
     int         length;
     const char* data;
-} Cert_Metadata;
+} rawhttps_cert_metadata;
 
 typedef struct {
-    HoBigInt            serial_number;
-    PublicKey           public_key;
-    Signature_Algorithm type;
-    Signature_Algorithm signature_algorithm;
-    Cert_Metadata       common_name;
-    Cert_Metadata       country;
-    Cert_Metadata       state;
-    Cert_Metadata       locality;
-    Cert_Metadata       organization;
-    Cert_Metadata       email;
-	Base64_Data         raw;
-} RSA_Certificate;
+    rawhttps_ho_big_int            serial_number;
+    rawhttps_public_key           public_key;
+    rawhttps_signature_algorithm type;
+    rawhttps_signature_algorithm rawhttps_signature_algorithm;
+    rawhttps_cert_metadata       common_name;
+    rawhttps_cert_metadata       country;
+    rawhttps_cert_metadata       state;
+    rawhttps_cert_metadata       locality;
+    rawhttps_cert_metadata       organization;
+    rawhttps_cert_metadata       email;
+	rawhttps_base64_data         raw;
+} rawhttps_rsa_certificate;
 
-PublicKey       asn1_parse_public_key_from_file(const char* filename, int* error);
-PublicKey       asn1_parse_pem_public_key_from_file(const char* filename, int* error);
-PrivateKey      asn1_parse_pem_private_key_from_file(const char* filename, int* error);
-PrivateKey      asn1_parse_pem_private_certificate_key_from_file(const char* filename, int* error);
-RSA_Certificate asn1_parse_pem_certificate_from_file(const char* filename, int* error);
+rawhttps_public_key       asn1_parse_public_key_from_file(const char* filename, int* error);
+rawhttps_public_key       asn1_parse_pem_public_key_from_file(const char* filename, int* error);
+rawhttps_private_key      asn1_parse_pem_private_key_from_file(const char* filename, int* error);
+rawhttps_private_key      asn1_parse_pem_private_certificate_key_from_file(const char* filename, int* error);
+rawhttps_rsa_certificate asn1_parse_pem_certificate_from_file(const char* filename, int* error);
 
 // RSA Certificate in the PEM format
-RSA_Certificate asn1_parse_pem_certificate(const unsigned char* data, int length, int* error, int is_base64_encoded);
+rawhttps_rsa_certificate asn1_parse_pem_certificate(const unsigned char* data, int length, int* error, int is_base64_encoded);
 
-PrivateKey asn1_parse_pem_private_certificate_key(const unsigned char* data, int length_bytes, int* error, int is_base64_encoded);
+rawhttps_private_key asn1_parse_pem_private_certificate_key(const unsigned char* data, int length_bytes, int* error, int is_base64_encoded);
 
 // Public Key in the format of openssl
-PublicKey asn1_parse_public_key(const unsigned char* data, int length, int* error, int is_base64_encoded);
+rawhttps_public_key asn1_parse_public_key(const unsigned char* data, int length, int* error, int is_base64_encoded);
 
 // Public Key in the PEM format
-PublicKey asn1_parse_pem_public(const unsigned char* data, int length, int* error, int is_base64_encoded);
+rawhttps_public_key asn1_parse_pem_public(const unsigned char* data, int length, int* error, int is_base64_encoded);
 
 // Private Key in the PEM format
-PrivateKey asn1_parse_pem_private(const unsigned char* data, int length, int* error, int is_base64_encoded);
+rawhttps_private_key asn1_parse_pem_private(const unsigned char* data, int length, int* error, int is_base64_encoded);
 
 // Free functions
-void public_key_free(PublicKey p);
-void private_key_free(PrivateKey p);
+void public_key_free(rawhttps_public_key p);
+void private_key_free(rawhttps_private_key p);
 
 // Print functions
-void public_key_print(PublicKey pk);
-void private_key_print(PrivateKey pk);
+void public_key_print(rawhttps_public_key pk);
+void private_key_print(rawhttps_private_key pk);

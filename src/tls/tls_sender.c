@@ -28,10 +28,10 @@ static int higher_layer_packet_send(rawhttps_connection_state* server_cs, const 
 
 // send to the client a new HANDSHAKE packet, with message type SERVER_HELLO
 int rawhttps_tls_sender_handshake_server_hello_message_send(rawhttps_connection_state* server_cs, int connected_socket,
-	unsigned short selected_cipher_suite, unsigned char* random_number, dynamic_buffer* handshake_messages)
+	unsigned short selected_cipher_suite, unsigned char* random_number, rawhttps_util_dynamic_buffer* handshake_messages)
 {
-	dynamic_buffer db;
-	util_dynamic_buffer_new(&db, 1024);
+	rawhttps_util_dynamic_buffer db;
+	rawhttps_util_dynamic_buffer_new(&db, 1024);
 
 	unsigned short extensions_length = 0;
 	unsigned char session_id_length = 0;
@@ -45,24 +45,24 @@ int rawhttps_tls_sender_handshake_server_hello_message_send(rawhttps_connection_
 	unsigned int message_length_be = BIG_ENDIAN_24(2 + 32 + 1 + session_id_length + 2 + 1 + 2 + extensions_length);
 	unsigned short ssl_version_be = BIG_ENDIAN_16(TLS12);
 
-	util_dynamic_buffer_add(&db, &message_type, 1);						// Message Type (1 Byte)
-	util_dynamic_buffer_add(&db, &message_length_be, 3);				// Message Length (3 Bytes) [PLACEHOLDER]
-	util_dynamic_buffer_add(&db, &ssl_version_be, 2);					// SSL Version (2 Bytes)
-	util_dynamic_buffer_add(&db, random_number, 32);					// Random Number (32 Bytes)
-	util_dynamic_buffer_add(&db, &session_id_length, 1);				// Session ID Length (1 Byte)
-	util_dynamic_buffer_add(&db, session_id, 0);						// Session ID (n Bytes)
-	util_dynamic_buffer_add(&db, &selected_cipher_suite_be, 2);			// Selected Cipher Suite (2 Bytes)
-	util_dynamic_buffer_add(&db, &selected_compression_method, 1);		// Selected Compression Method (1 Byte)
-	util_dynamic_buffer_add(&db, &extensions_length_be, 2);				// Extensions Length (2 Bytes)
-	util_dynamic_buffer_add(&db, extensions, 0);						// Extensions (n Bytes)
+	rawhttps_util_dynamic_buffer_add(&db, &message_type, 1);						// Message Type (1 Byte)
+	rawhttps_util_dynamic_buffer_add(&db, &message_length_be, 3);				// Message Length (3 Bytes) [PLACEHOLDER]
+	rawhttps_util_dynamic_buffer_add(&db, &ssl_version_be, 2);					// SSL Version (2 Bytes)
+	rawhttps_util_dynamic_buffer_add(&db, random_number, 32);					// Random Number (32 Bytes)
+	rawhttps_util_dynamic_buffer_add(&db, &session_id_length, 1);				// Session ID Length (1 Byte)
+	rawhttps_util_dynamic_buffer_add(&db, session_id, 0);						// Session ID (n Bytes)
+	rawhttps_util_dynamic_buffer_add(&db, &selected_cipher_suite_be, 2);			// Selected Cipher Suite (2 Bytes)
+	rawhttps_util_dynamic_buffer_add(&db, &selected_compression_method, 1);		// Selected Compression Method (1 Byte)
+	rawhttps_util_dynamic_buffer_add(&db, &extensions_length_be, 2);				// Extensions Length (2 Bytes)
+	rawhttps_util_dynamic_buffer_add(&db, extensions, 0);						// Extensions (n Bytes)
 
 	// We could even use the same dynamic buffer here...
-	util_dynamic_buffer_add(handshake_messages, db.buffer, db.size);
+	rawhttps_util_dynamic_buffer_add(handshake_messages, db.buffer, db.size);
 
 	if (higher_layer_packet_send(server_cs, db.buffer, db.size, HANDSHAKE_PROTOCOL, connected_socket))
 		return -1;
 
-	util_dynamic_buffer_free(&db);
+	rawhttps_util_dynamic_buffer_free(&db);
 	return 0;
 }
 
@@ -70,10 +70,10 @@ int rawhttps_tls_sender_handshake_server_hello_message_send(rawhttps_connection_
 // for now, this function receives a single certificate!
 // @todo: support a chain of certificates
 int rawhttps_tls_sender_handshake_server_certificate_message_send(rawhttps_connection_state* server_cs, int connected_socket,
-	unsigned char* certificate, int certificate_size, dynamic_buffer* handshake_messages)
+	unsigned char* certificate, int certificate_size, rawhttps_util_dynamic_buffer* handshake_messages)
 {
-	dynamic_buffer db;
-	util_dynamic_buffer_new(&db, 1024);
+	rawhttps_util_dynamic_buffer db;
+	rawhttps_util_dynamic_buffer_new(&db, 1024);
 
 	// For now, we are hardcoding a single certificate!
 	unsigned int number_of_certificates = 1;
@@ -90,46 +90,46 @@ int rawhttps_tls_sender_handshake_server_certificate_message_send(rawhttps_conne
 	unsigned char message_type = SERVER_CERTIFICATE_MESSAGE;
 	unsigned int message_length_be = BIG_ENDIAN_24(3 + certificates_length); // initial 3 bytes are the length of all certificates + their individual lengths
 
-	util_dynamic_buffer_add(&db, &message_type, 1);						// Message Type (1 Byte)
-	util_dynamic_buffer_add(&db, &message_length_be, 3);					// Message Length (3 Bytes) [PLACEHOLDER]
-	util_dynamic_buffer_add(&db, &certificates_length_be, 3);
+	rawhttps_util_dynamic_buffer_add(&db, &message_type, 1);						// Message Type (1 Byte)
+	rawhttps_util_dynamic_buffer_add(&db, &message_length_be, 3);					// Message Length (3 Bytes) [PLACEHOLDER]
+	rawhttps_util_dynamic_buffer_add(&db, &certificates_length_be, 3);
 	for (int i = 0; i < number_of_certificates; ++i)
 	{
 		unsigned int size = BIG_ENDIAN_24(certificates[i].size);
-		util_dynamic_buffer_add(&db, &size, 3);
-		util_dynamic_buffer_add(&db, certificates[i].data, certificates[i].size);
+		rawhttps_util_dynamic_buffer_add(&db, &size, 3);
+		rawhttps_util_dynamic_buffer_add(&db, certificates[i].data, certificates[i].size);
 	}
 
 	// We could even use the same dynamic buffer here...
-	util_dynamic_buffer_add(handshake_messages, db.buffer, db.size);
+	rawhttps_util_dynamic_buffer_add(handshake_messages, db.buffer, db.size);
 
 	if (higher_layer_packet_send(server_cs, db.buffer, db.size, HANDSHAKE_PROTOCOL, connected_socket))
 		return -1;
 
-	util_dynamic_buffer_free(&db);
+	rawhttps_util_dynamic_buffer_free(&db);
 	return 0;
 }
 
 // send to the client a new HANDSHAKE packet, with message type SERVER_HELLO_DONE
 int rawhttps_tls_sender_handshake_server_hello_done_message_send(rawhttps_connection_state* server_cs, int connected_socket,
-	dynamic_buffer* handshake_messages)
+	rawhttps_util_dynamic_buffer* handshake_messages)
 {
-	dynamic_buffer db;
-	util_dynamic_buffer_new(&db, 1024);
+	rawhttps_util_dynamic_buffer db;
+	rawhttps_util_dynamic_buffer_new(&db, 1024);
 
 	unsigned char message_type = SERVER_HELLO_DONE_MESSAGE;
 	unsigned int message_length_be = BIG_ENDIAN_24(0);
 
-	util_dynamic_buffer_add(&db, &message_type, 1);						// Message Type (1 Byte)
-	util_dynamic_buffer_add(&db, &message_length_be, 3);					// Message Length (3 Bytes) [PLACEHOLDER]
+	rawhttps_util_dynamic_buffer_add(&db, &message_type, 1);						// Message Type (1 Byte)
+	rawhttps_util_dynamic_buffer_add(&db, &message_length_be, 3);					// Message Length (3 Bytes) [PLACEHOLDER]
 
 	// We could even use the same dynamic buffer here...
-	util_dynamic_buffer_add(handshake_messages, db.buffer, db.size);
+	rawhttps_util_dynamic_buffer_add(handshake_messages, db.buffer, db.size);
 
 	if (higher_layer_packet_send(server_cs, db.buffer, db.size, HANDSHAKE_PROTOCOL, connected_socket))
 		return -1;
 
-	util_dynamic_buffer_free(&db);
+	rawhttps_util_dynamic_buffer_free(&db);
 	return 0;
 }
 
@@ -137,20 +137,20 @@ int rawhttps_tls_sender_handshake_server_hello_done_message_send(rawhttps_connec
 int rawhttps_tls_sender_handshake_finished_message_send(rawhttps_connection_state* server_cs, int connected_socket,
 	unsigned char verify_data[12])
 {
-	dynamic_buffer db;
-	util_dynamic_buffer_new(&db, 16);
+	rawhttps_util_dynamic_buffer db;
+	rawhttps_util_dynamic_buffer_new(&db, 16);
 
 	unsigned char message_type = FINISHED_MESSAGE;
 	unsigned int message_length_be = BIG_ENDIAN_24(12);
 
-	util_dynamic_buffer_add(&db, &message_type, 1);							// Message Type (1 Byte)
-	util_dynamic_buffer_add(&db, &message_length_be, 3);					// Message Length (3 Bytes)
-	util_dynamic_buffer_add(&db, verify_data, 12);							// Verify Data (12 Bytes)
+	rawhttps_util_dynamic_buffer_add(&db, &message_type, 1);							// Message Type (1 Byte)
+	rawhttps_util_dynamic_buffer_add(&db, &message_length_be, 3);					// Message Length (3 Bytes)
+	rawhttps_util_dynamic_buffer_add(&db, verify_data, 12);							// Verify Data (12 Bytes)
 
 	if (higher_layer_packet_send(server_cs, db.buffer, db.size, HANDSHAKE_PROTOCOL, connected_socket))
 		return -1;
 
-	util_dynamic_buffer_free(&db);
+	rawhttps_util_dynamic_buffer_free(&db);
 	return 0;
 }
 

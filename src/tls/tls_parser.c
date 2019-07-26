@@ -175,7 +175,7 @@ int rawhttps_tls_parser_change_cipher_spec_parse(change_cipher_spec_packet* pack
 
 // parses the next message into a tls_packet (packet parameter)
 int rawhttps_tls_parser_handshake_packet_parse(handshake_packet* packet, rawhttps_tls_parser_state* ps, int connected_socket,
-	rawhttps_connection_state* client_cs, dynamic_buffer* handshake_messages)
+	rawhttps_connection_state* client_cs, rawhttps_util_dynamic_buffer* handshake_messages)
 {
 	// If we have remainings from last parse, we have an error (forgot to clear buffer)
 	assert(ps->higher_layer_buffer.buffer_position_get == 0);
@@ -187,14 +187,14 @@ int rawhttps_tls_parser_handshake_packet_parse(handshake_packet* packet, rawhttp
 		return -1;
 	// Before parsing we need to add its content to the handshake_messages buffer
 	// This is needed by the full handshake when the FINISHED message is received.
-	util_dynamic_buffer_add(handshake_messages, ptr, 4);
+	rawhttps_util_dynamic_buffer_add(handshake_messages, ptr, 4);
 	packet->hh.message_type = *ptr; ++ptr;
 	packet->hh.message_length = LITTLE_ENDIAN_24(ptr); ptr += 3;
 	if (tls_parser_get_next_bytes(ps, packet->hh.message_length, &ptr, connected_socket, client_cs))
 		return -1;
 	// If the packet has type HANDSHAKE_PROTOCOL, before parsing we need to add its content to the handshake_messages buffer
 	// This is needed by the full handshake when the FINISHED message is received.
-	util_dynamic_buffer_add(handshake_messages, ptr, packet->hh.message_length);
+	rawhttps_util_dynamic_buffer_add(handshake_messages, ptr, packet->hh.message_length);
 
 	switch (packet->hh.message_type)
 	{

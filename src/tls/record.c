@@ -156,7 +156,7 @@ static int cipher_block_decrypt(const rawhttps_connection_state* client_cs, unsi
 			int block_count = (int)record_data_without_iv_length / client_cs->security_parameters.block_length;
 			switch (client_cs->security_parameters.enc_key_length)
 			{
-				case 16: aes_128_cbc_decrypt(record_data_without_iv, client_cs->cipher_state.enc_key,
+				case 16: rawhttps_aes_128_cbc_decrypt(record_data_without_iv, client_cs->cipher_state.enc_key,
 					record_iv, block_count, result); break;
 				default: return -1;
 			}
@@ -284,7 +284,7 @@ static int cipher_block_encrypt(rawhttps_connection_state* server_cs, unsigned c
 			assert(generic_block_cipher_size % server_cs->security_parameters.block_length == 0);
 			switch (server_cs->security_parameters.enc_key_length)
 			{
-				case 16: aes_128_cbc_encrypt(generic_block_cipher, server_cs->cipher_state.enc_key, iv,
+				case 16: rawhttps_aes_128_cbc_encrypt(generic_block_cipher, server_cs->cipher_state.enc_key, iv,
 					generic_block_cipher_size / server_cs->security_parameters.block_length, generic_block_cipher); break;
 				default: return -1;
 			}
@@ -335,12 +335,12 @@ static int mac(const rawhttps_connection_state* server_cs, const unsigned char* 
 	switch(server_cs->security_parameters.mac_algorithm)
 	{
 		case MAC_ALGORITHM_HMAC_SHA1: {
-			hmac(sha1, server_cs->mac_key, server_cs->security_parameters.mac_length, mac_message, mac_message_length, result,
+			rawhttps_hmac(rawhttps_sha1, server_cs->mac_key, server_cs->security_parameters.mac_length, mac_message, mac_message_length, result,
 				server_cs->security_parameters.mac_length);
 			return 0;
 		} break;
 		case MAC_ALGORITHM_HMAC_SHA256: {
-			hmac(sha256, server_cs->mac_key, server_cs->security_parameters.mac_length, mac_message, mac_message_length, result,
+			rawhttps_hmac(rawhttps_sha256, server_cs->mac_key, server_cs->security_parameters.mac_length, mac_message, mac_message_length, result,
 				server_cs->security_parameters.mac_length);
 			return 0;
 		} break;

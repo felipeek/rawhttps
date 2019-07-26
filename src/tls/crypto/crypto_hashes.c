@@ -177,7 +177,7 @@ sha1_transform(uint32_t digest[5], uint32_t block[16]) {
 }
 
 void 
-sha1(const unsigned char* buffer, int length, unsigned char out[20]) {
+rawhttps_sha1(const unsigned char* buffer, int length, unsigned char out[20]) {
     uint32_t digest[5] = {0x67452301, 0xEFCDAB89, 0x98BADCFE, 0x10325476, 0xC3D2E1F0};
     uint32_t block[16] = {0};
 
@@ -225,7 +225,7 @@ sha1(const unsigned char* buffer, int length, unsigned char out[20]) {
 }
 
 void 
-sha1_to_string(unsigned char in[20], unsigned char out[40]) {
+rawhttps_sha1_to_string(unsigned char in[20], unsigned char out[40]) {
     const int SHA1_DIGEST_SIZE = 5;
     for (uint64_t i = 0; i < SHA1_DIGEST_SIZE; i += 1) {
         uint32_t v = ((uint32_t*)in)[i];
@@ -302,7 +302,7 @@ sha256_transform(const unsigned char* buffer, uint32_t digest[8], uint32_t ms[64
 }
 
 void 
-sha256(const unsigned char* buffer, int length, unsigned char out[32]) {
+rawhttps_sha256(const unsigned char* buffer, int length, unsigned char out[32]) {
     uint64_t total_bits = length * 8;
 
     uint32_t digest[8] = { 
@@ -350,7 +350,7 @@ sha256(const unsigned char* buffer, int length, unsigned char out[32]) {
 }
 
 void 
-sha256_to_string(unsigned char in[32], unsigned char out[64]) {
+rawhttps_sha256_to_string(unsigned char in[32], unsigned char out[64]) {
     const int SHA256_DIGEST_SIZE = 8;
     for (uint64_t i = 0; i < SHA256_DIGEST_SIZE; i += 1) {
         uint32_t v = ((uint32_t*)in)[i];
@@ -439,7 +439,7 @@ md5_transform(uint32_t digest[4], uint32_t block[16]) {
 }
 
 void 
-md5(const unsigned char* buffer, int length, unsigned char out[16]) {
+rawhttps_md5(const unsigned char* buffer, int length, unsigned char out[16]) {
     uint32_t digest[] = { 0x67452301, 0xEFCDAB89, 0x98BADCFE, 0x10325476 };
     uint32_t block[16] = {0};
 
@@ -487,7 +487,7 @@ md5(const unsigned char* buffer, int length, unsigned char out[16]) {
 }
 
 void 
-md5_to_string(unsigned char in[16], unsigned char out[32]) {
+rawhttps_md5_to_string(unsigned char in[16], unsigned char out[32]) {
     const int MD5_DIGEST_SIZE = 4;
     for (uint64_t i = 0; i < MD5_DIGEST_SIZE; i += 1) {
         uint32_t v = ((uint32_t*)in)[i];

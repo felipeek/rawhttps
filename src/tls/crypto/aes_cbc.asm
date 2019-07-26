@@ -6,8 +6,8 @@
 ; R8
 ; R9
 
-global aes_128_cbc_encrypt
-global aes_128_cbc_decrypt
+global rawhttps_aes_128_cbc_encrypt
+global rawhttps_aes_128_cbc_decrypt
 
 section .text
 
@@ -203,7 +203,7 @@ aes_calculate_keys:
     ret
 
 ; void aes_encrypt(uint8_t* block, uint8_t* key, uint8_t* result);
-aes_128_cbc_encrypt:
+rawhttps_aes_128_cbc_encrypt:
     ; Encrypt
 
     ; Keys are returned in the registers xmm1-xmm11
@@ -240,7 +240,7 @@ start_aes_cbc_enc:
     ret
 
 ; void aes_decrypt(uint8_t* block, uint8_t* key, uint8_t* result);
-aes_128_cbc_decrypt:
+rawhttps_aes_128_cbc_decrypt:
     ; Decrypt
 
     ; Keys are returned in the registers xmm1-xmm11

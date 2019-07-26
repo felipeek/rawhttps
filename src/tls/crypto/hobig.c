@@ -71,21 +71,21 @@ print_time_slots() {
     printf("ModDivide: %.2f ms, executed %d times\n", 0.001 * elapsed_times[TIME_SLOT_MOD_DIV], execution_count[TIME_SLOT_MOD_DIV]);
 }
 
-HoBigInt 
+rawhttps_ho_big_int 
 hobig_int_new(u64 v) {
-    HoBigInt result = { 0, array_new(u64) };
+    rawhttps_ho_big_int result = { 0, array_new(u64) };
     array_push(result.value, v);
     return result;
 }
 
-HoBigInt
+rawhttps_ho_big_int
 hobig_int_make(u64 n) {
-    HoBigInt result = {0, array_new_len(u64, n) };
+    rawhttps_ho_big_int result = {0, array_new_len(u64, n) };
     return result;
 }
 
 void
-hobig_free(HoBigInt v) {
+hobig_free(rawhttps_ho_big_int v) {
     if(v.value) array_free(v.value);
 }
 
@@ -104,7 +104,7 @@ print_number(unsigned char* num, int length) {
 
 // Returns the number of leading zeros
 static int 
-hobig_int_leading_zeros_count(HoBigInt n) {
+hobig_int_leading_zeros_count(rawhttps_ho_big_int n) {
     u64 v = n.value[array_length(n.value) - 1];
 
     int c = 64;
@@ -117,7 +117,7 @@ hobig_int_leading_zeros_count(HoBigInt n) {
 }
 
 int
-hobig_int_bitcount(HoBigInt* v) {
+hobig_int_bitcount(rawhttps_ho_big_int* v) {
     int word_bit_count =  (int)(array_length(v->value) * sizeof(*v->value) * 8);
 
     return word_bit_count - hobig_int_leading_zeros_count(*v);
@@ -137,9 +137,9 @@ u64 bigendian_word(u64 v) {
     return r;
 }
 
-HoBigInt
+rawhttps_ho_big_int
 hobig_int_new_from_memory(const unsigned char* m, int length) {
-    HoBigInt result = {0};
+    rawhttps_ho_big_int result = {0};
     if(length == 0) return result;
 
     int arr_length = (length + sizeof(u64) - 1) / sizeof(u64);
@@ -177,7 +177,7 @@ big_dec_sum(u8* dst, u8* src, int length) {
 }
 
 void 
-hobig_int_print(HoBigInt n) {
+hobig_int_print(rawhttps_ho_big_int n) {
     if(!n.value || array_length(n.value) == 0){
         printf("0");
         return;
@@ -209,16 +209,16 @@ hobig_int_print(HoBigInt n) {
     free(buffer);
 }
 
-HoBigInt
-hobig_int_copy(HoBigInt v) {
-    HoBigInt result = {0};
+rawhttps_ho_big_int
+hobig_int_copy(rawhttps_ho_big_int v) {
+    rawhttps_ho_big_int result = {0};
     result.negative = v.negative;
     result.value = array_copy(v.value);
     return result;
 }
 
 static void
-multiply_by_pow2(HoBigInt* n, int power) {
+multiply_by_pow2(rawhttps_ho_big_int* n, int power) {
     int word_size_bytes = sizeof(*n->value);
     int word_size_bits = word_size_bytes * 8;
     int word_shift_count = power / word_size_bits;
@@ -251,7 +251,7 @@ multiply_by_pow2(HoBigInt* n, int power) {
 //  0 -> they are equal
 // -1 -> right is bigger
 int
-hobig_int_compare_signed(HoBigInt* left, HoBigInt* right) {
+hobig_int_compare_signed(rawhttps_ho_big_int* left, rawhttps_ho_big_int* right) {
     TIME_COUNT();
     // Check the sign first
     if(left->negative != right->negative) {
@@ -291,7 +291,7 @@ hobig_int_compare_signed(HoBigInt* left, HoBigInt* right) {
 //  0 -> they are equal
 // -1 -> right is bigger
 int
-hobig_int_compare_absolute(HoBigInt* left, HoBigInt* right) {
+hobig_int_compare_absolute(rawhttps_ho_big_int* left, rawhttps_ho_big_int* right) {
     TIME_COUNT();
     if(left->value == right->value) {
         TIME_END(TIME_SLOT_COMPARE);
@@ -321,10 +321,10 @@ hobig_int_compare_absolute(HoBigInt* left, HoBigInt* right) {
 }
 
 void
-hobig_int_sub(HoBigInt* dst, HoBigInt* src);
+hobig_int_sub(rawhttps_ho_big_int* dst, rawhttps_ho_big_int* src);
 
 static u64 
-add_hobig_slice(u64* z, u64 zlen, u64* x, HoBigInt y) {
+add_hobig_slice(u64* z, u64 zlen, u64* x, rawhttps_ho_big_int y) {
     u64 c = 0;
     for (u64 i = 0; i < zlen; ++i) {
         c = add_u64(x[i], y.value[i], c, &z[i]);
@@ -334,7 +334,7 @@ add_hobig_slice(u64* z, u64 zlen, u64* x, HoBigInt y) {
 
 // The resulting carry c is either 0 or 1.
 static u64 
-sub_hobig_slice(u64* z, u64 zlen, u64* x, HoBigInt y) {
+sub_hobig_slice(u64* z, u64 zlen, u64* x, rawhttps_ho_big_int y) {
     u64 c = 0;
     for (u64 i = 0; i < zlen; ++i) {
         c = sub_u64(x[i], y.value[i], c, &z[i]);
@@ -347,7 +347,7 @@ int greater_than(u64 x1, u64 x2, u64 y1, u64 y2) {
 }
 
 void 
-hobig_int_add(HoBigInt* dst, HoBigInt* src) {
+hobig_int_add(rawhttps_ho_big_int* dst, rawhttps_ho_big_int* src) {
     TIME_COUNT();
     // Check to see if a subtraction is preferred
     if(dst->negative != src->negative) {
@@ -367,7 +367,7 @@ hobig_int_add(HoBigInt* dst, HoBigInt* src) {
         return;
     }
 
-    HoBigInt s = {0};
+    rawhttps_ho_big_int s = {0};
     int free_source = 0;
     if(dst == src) {
         s = hobig_int_copy(*src);
@@ -402,7 +402,7 @@ hobig_int_add(HoBigInt* dst, HoBigInt* src) {
             if(dst->value[array_length(src->value)] != (u64)-1) {
                 dst->value[array_length(src->value)] += 1;
             } else {
-                HoBigInt big_one = hobig_int_new(1);
+                rawhttps_ho_big_int big_one = hobig_int_new(1);
                 hobig_int_add(dst, &big_one);
             }
         }
@@ -416,7 +416,7 @@ hobig_int_add(HoBigInt* dst, HoBigInt* src) {
 }
 
 void
-hobig_int_sub(HoBigInt* dst, HoBigInt* src) {
+hobig_int_sub(rawhttps_ho_big_int* dst, rawhttps_ho_big_int* src) {
     TIME_COUNT();
     int comparison = hobig_int_compare_absolute(dst, src);
 
@@ -498,13 +498,13 @@ hobig_int_sub(HoBigInt* dst, HoBigInt* src) {
 }
 
 static void 
-hobig_int_mul_pow10(HoBigInt* start, int p) {
+hobig_int_mul_pow10(rawhttps_ho_big_int* start, int p) {
     if(p == 0) {
         return;
     }
     // 8x + 2x
     for(int i = 0; i < p; ++i) {
-        HoBigInt copy2 = hobig_int_copy(*start);
+        rawhttps_ho_big_int copy2 = hobig_int_copy(*start);
 
         multiply_by_pow2(start, 3);     // multiply by 8
         multiply_by_pow2(&copy2, 1);    // multiply by 2
@@ -515,7 +515,7 @@ hobig_int_mul_pow10(HoBigInt* start, int p) {
     }
 }
 
-void hobig_int_normalize(HoBigInt* n) {
+void hobig_int_normalize(rawhttps_ho_big_int* n) {
     int i = 1;
     for(; i < array_length(n->value) && n->value[array_length(n->value) - i] == 0; ++i);
     i--;
@@ -530,19 +530,19 @@ multiply_and_add(u64 x, u64 y, u64 c, u64* rh, u64* rl) {
 	}
 }
 
-u64 multiply_and_add_vector(HoBigInt z, HoBigInt x, u64 y, u64 r) {
+u64 multiply_and_add_vector(rawhttps_ho_big_int z, rawhttps_ho_big_int x, u64 y, u64 r) {
 	u64 c = r;
 	for (int i = 0; i < array_length(z.value); ++i) {
         multiply_and_add(x.value[i], y, c, &c, &z.value[i]);
 	}
     return c;
 }
-HoBigInt 
-hobig_int_mul(HoBigInt* x, HoBigInt* y) {
+rawhttps_ho_big_int 
+hobig_int_mul(rawhttps_ho_big_int* x, rawhttps_ho_big_int* y) {
     TIME_COUNT();
 
     u64      result_length = array_length(x->value) + array_length(y->value);
-    HoBigInt result = hobig_int_make(result_length);
+    rawhttps_ho_big_int result = hobig_int_make(result_length);
     array_length(result.value) = result_length;
 
 	for (u64 i = 0; i < array_length(y->value); ++i) {
@@ -566,9 +566,9 @@ hobig_int_mul(HoBigInt* x, HoBigInt* y) {
 	return result;
 }
 
-HoBigInt 
+rawhttps_ho_big_int 
 hobig_int_new_decimal(const char* number, unsigned int* error) {
-    HoBigInt result = {0};
+    rawhttps_ho_big_int result = {0};
     if(error) *error = 0;
 
     int len = strlen(number);
@@ -593,13 +593,13 @@ hobig_int_new_decimal(const char* number, unsigned int* error) {
     array_push(result.value, first);
 
     // All digits to be used in multiplication
-    HoBigInt digits[10] = { 0 };
+    rawhttps_ho_big_int digits[10] = { 0 };
     for(int i = 1; i < 10; ++i) {
         digits[i] = hobig_int_new(i);
     }
 
     // Powers of ten that will be used for every step
-    HoBigInt powers_of_ten = hobig_int_new(1);
+    rawhttps_ho_big_int powers_of_ten = hobig_int_new(1);
 
     for(int i = len - 2; i >= index; --i) {
         int n = number[i] - 0x30;
@@ -620,10 +620,10 @@ hobig_int_new_decimal(const char* number, unsigned int* error) {
         if(n == 0) continue;
 
         // Grab a copy to be used to multiply by the digit value
-        HoBigInt pow10val = hobig_int_copy(powers_of_ten);
+        rawhttps_ho_big_int pow10val = hobig_int_copy(powers_of_ten);
 
         // Multiply by the digit value n
-        HoBigInt rr = hobig_int_mul(&pow10val, &digits[n]);
+        rawhttps_ho_big_int rr = hobig_int_mul(&pow10val, &digits[n]);
         hobig_free(pow10val);
         pow10val = rr;
 
@@ -652,7 +652,7 @@ hobig_int_new_decimal(const char* number, unsigned int* error) {
 
 // Same as dividing by 2^shift_amt
 static void 
-hobig_int_shr(HoBigInt* v, int shift_amt) {
+hobig_int_shr(rawhttps_ho_big_int* v, int shift_amt) {
     if(shift_amt == 0) return;
     int opposite = 64 - shift_amt;
     u64 mask = (0xffffffffffffffff << opposite);
@@ -667,7 +667,7 @@ hobig_int_shr(HoBigInt* v, int shift_amt) {
 
 // Same as multiplying by 2^shift_amt
 static void 
-hobig_int_shl(HoBigInt* v, int shift_amt) {
+hobig_int_shl(rawhttps_ho_big_int* v, int shift_amt) {
     if(shift_amt == 0) return;
     int opposite = 64 - shift_amt;
     u64 mask = (0xffffffffffffffff >> opposite);
@@ -681,21 +681,21 @@ hobig_int_shl(HoBigInt* v, int shift_amt) {
 }
 
 // Use the euclidean algorithm to calculate GCD(a, b) (Greatest common divisor).
-HoBigInt
-hobig_int_gcd(HoBigInt* a, HoBigInt* b) {
+rawhttps_ho_big_int
+hobig_int_gcd(rawhttps_ho_big_int* a, rawhttps_ho_big_int* b) {
     if(array_length(a->value) == 1 && *a->value == 0) {
         return hobig_int_copy(*b);
     }
     if(array_length(b->value) == 1 && *b->value == 0) {
         return hobig_int_copy(*a);
     }
-    HoBigInt_DivResult d = hobig_int_div(a, b);
+    rawhttps_ho_big_int_div_result d = hobig_int_div(a, b);
     return hobig_int_gcd(b, &d.remainder);
 }
 
-HoBigInt
+rawhttps_ho_big_int
 hobig_random_bitcount(int nbits) {
-    HoBigInt result = {0};
+    rawhttps_ho_big_int result = {0};
     if(nbits == 0) return hobig_int_new(0);
 
     int blocks = ((nbits + nbits % 64) / 64);
@@ -710,9 +710,9 @@ hobig_random_bitcount(int nbits) {
     return result;
 }
 
-HoBigInt
-hobig_random(HoBigInt* max) {
-    HoBigInt r = hobig_int_copy(*max);
+rawhttps_ho_big_int
+hobig_random(rawhttps_ho_big_int* max) {
+    rawhttps_ho_big_int r = hobig_int_copy(*max);
     u64 m = r.value[array_length(r.value) - 1];
     u64 r0 = random_integer(0, m);
     r.value[array_length(r.value) - 1] = r0;
@@ -725,34 +725,34 @@ hobig_random(HoBigInt* max) {
     return r;
 }
 
-HoBigInt
-hobig_int_mod_div(HoBigInt* n, HoBigInt* exp, HoBigInt* m) {
-    HoBigInt answer = hobig_int_new(1);
-    HoBigInt_DivResult r = hobig_int_div(n, m);
+rawhttps_ho_big_int
+hobig_int_mod_div(rawhttps_ho_big_int* n, rawhttps_ho_big_int* exp, rawhttps_ho_big_int* m) {
+    rawhttps_ho_big_int answer = hobig_int_new(1);
+    rawhttps_ho_big_int_div_result r = hobig_int_div(n, m);
 
-    HoBigInt base = r.remainder;
+    rawhttps_ho_big_int base = r.remainder;
     hobig_free(r.quotient);
 
-    HoBigInt e = hobig_int_copy(*exp);
+    rawhttps_ho_big_int e = hobig_int_copy(*exp);
 
 	while (e.value[0] > 0) {
 		if ((e.value[0] & 1) == 1) {
-            HoBigInt nansw = hobig_int_mul(&answer, &base);
+            rawhttps_ho_big_int nansw = hobig_int_mul(&answer, &base);
             hobig_free(answer);
             answer = nansw;
             
-            HoBigInt_DivResult r = hobig_int_div(&answer, m);
+            rawhttps_ho_big_int_div_result r = hobig_int_div(&answer, m);
             hobig_free(r.quotient);
 			answer = r.remainder;
 		}
 
         hobig_int_shr(&e, 1);
 
-        HoBigInt sqbase = hobig_int_mul(&base, &base);
+        rawhttps_ho_big_int sqbase = hobig_int_mul(&base, &base);
         hobig_free(base);
         base = sqbase;
 
-        HoBigInt_DivResult bb = hobig_int_div(&base, m);
+        rawhttps_ho_big_int_div_result bb = hobig_int_div(&base, m);
         hobig_free(bb.quotient);
         hobig_free(base);
         base = bb.remainder;
@@ -767,11 +767,11 @@ hobig_int_mod_div(HoBigInt* n, HoBigInt* exp, HoBigInt* m) {
 
     Knuth, Volume 2, section 4.3.1, Algorithm D.
  */
-static HoBigInt_DivResult 
-hobig_int_div_knuth(HoBigInt* u, HoBigInt* v) {
+static rawhttps_ho_big_int_div_result 
+hobig_int_div_knuth(rawhttps_ho_big_int* u, rawhttps_ho_big_int* v) {
 	assert(array_length(u->value) >= array_length(v->value));
     TIME_COUNT();
-    HoBigInt_DivResult result = {0};
+    rawhttps_ho_big_int_div_result result = {0};
 
 	int n = (int)array_length(v->value);
 	int m = (int)array_length(u->value) - n;
@@ -779,18 +779,18 @@ hobig_int_div_knuth(HoBigInt* u, HoBigInt* v) {
 	// D1
 	int shift = hobig_int_leading_zeros_count(*v);
 
-	HoBigInt v0 = hobig_int_copy(*v);
+	rawhttps_ho_big_int v0 = hobig_int_copy(*v);
     hobig_int_shl(&v0, shift);
 
-    HoBigInt u0 = hobig_int_copy(*u);
+    rawhttps_ho_big_int u0 = hobig_int_copy(*u);
     array_push(u0.value, 0); // allocate 1 more word
     hobig_int_shl(&u0, shift);
 
     // Final quotient
-    HoBigInt q = hobig_int_make(m + 1);
+    rawhttps_ho_big_int q = hobig_int_make(m + 1);
     array_length(q.value) = m + 1;
 
-    HoBigInt qhatv = hobig_int_make(n + 1);
+    rawhttps_ho_big_int qhatv = hobig_int_make(n + 1);
     array_length(qhatv.value) = n + 1;
 
     // D2
@@ -855,9 +855,9 @@ hobig_int_div_knuth(HoBigInt* u, HoBigInt* v) {
     return result;
 }
 
-HoBigInt_DivResult 
-hobig_int_div(HoBigInt* u, HoBigInt* v) {
-    HoBigInt_DivResult result = {0};
+rawhttps_ho_big_int_div_result 
+hobig_int_div(rawhttps_ho_big_int* u, rawhttps_ho_big_int* v) {
+    rawhttps_ho_big_int_div_result result = {0};
 
     switch(hobig_int_compare_absolute(u, v)) {
         case -1: {

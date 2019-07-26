@@ -36,9 +36,9 @@ int is_whitespace(char c) {
     return (c == ' ' || c == '\t' || c == '\r' || c == '\n' || c == '\v' || c == '\f');
 }
 
-Base64_Data 
-base64_decode(const u8* in, int length) {
-    Base64_Data result = {0};
+rawhttps_base64_data 
+rawhttps_base64_decode(const u8* in, int length) {
+    rawhttps_base64_data result = {0};
     unsigned char* mem = calloc(4, length);
 
     int error = 0;
@@ -133,7 +133,7 @@ typedef struct {
 } DER_UTC_Time;
 
 typedef struct {
-    HoBigInt i;
+    rawhttps_ho_big_int i;
 } DER_Integer;
 
 typedef struct DER_Node_t {
@@ -301,7 +301,7 @@ parse_der(Light_Arena* arena, u8* data, int total_length, int* error) {
                 length--;
                 extra_length++;
             }
-            HoBigInt b = hobig_int_new_from_memory(at, length);
+            rawhttps_ho_big_int b = hobig_int_new_from_memory(at, length);
             node->kind = DER_INTEGER;
             node->length = length + advance + extra_length;
             node->integer.i = b;
@@ -338,7 +338,7 @@ parse_der(Light_Arena* arena, u8* data, int total_length, int* error) {
 }
 
 void
-public_key_print(PublicKey pk) {
+public_key_print(rawhttps_public_key pk) {
     printf("{ ");
     hobig_int_print(pk.N);
     printf(", ");
@@ -347,7 +347,7 @@ public_key_print(PublicKey pk) {
 }
 
 void
-private_key_print(PrivateKey pk) {
+private_key_print(rawhttps_private_key pk) {
     printf("{\n\tPublic Key: ");
     public_key_print(pk.public);
     printf("\n\tPrivateExponent: ");
@@ -360,13 +360,13 @@ private_key_print(PrivateKey pk) {
 }
 
 void
-public_key_free(PublicKey p) {
+public_key_free(rawhttps_public_key p) {
     hobig_free(p.E);
     hobig_free(p.N);
 }
 
 void
-private_key_free(PrivateKey p) {
+private_key_free(rawhttps_private_key p) {
     hobig_free(p.public.E);
     hobig_free(p.public.N);
     hobig_free(p.PrivateExponent);
@@ -377,16 +377,16 @@ private_key_free(PrivateKey p) {
 // Parses a PEM file of a private key.
 // Reference:
 // https://crypto.stackexchange.com/questions/21102/what-is-the-ssl-private-key-file-format
-PrivateKey
+rawhttps_private_key
 asn1_parse_pem_private(const u8* data, int length, int* error, int is_base64_encoded) {
-    Base64_Data r = {0};
+    rawhttps_base64_data r = {0};
     if(is_base64_encoded) {
-        r = base64_decode(data, length);
+        r = rawhttps_base64_decode(data, length);
         if(r.error != 0) {
             fprintf(stderr, "Could not parse key base64 data\n");
             free(r.data);
             if(error) *error |= 1;
-            return (PrivateKey){0};
+            return (rawhttps_private_key){0};
         }
     } else {
         r.data = (u8*)data;
@@ -395,14 +395,14 @@ asn1_parse_pem_private(const u8* data, int length, int* error, int is_base64_enc
 
     Light_Arena* arena = arena_create(65535);
     DER_Node* node = parse_der(arena, (u8*)r.data, r.length, error);
-    PrivateKey key = {0};
+    rawhttps_private_key key = {0};
 
     #define FATAL_PEM_PRIVATE(T) if(error) *error |= 1; \
         fprintf(stderr, T); \
         if(is_base64_encoded) free(r.data); \
         arena_free(arena); \
         private_key_free(key); \
-        return (PrivateKey){0};
+        return (rawhttps_private_key){0};
 
     if(node->kind != DER_SEQUENCE) {
         FATAL_PEM_PRIVATE("Could not parse private key, expected DER sequence\n");
@@ -448,21 +448,21 @@ asn1_parse_pem_private(const u8* data, int length, int* error, int is_base64_enc
     return key;
 }
 
-static Signature_Algorithm signature_algorithm_from_oid(DER_Object_ID oid);
+static rawhttps_signature_algorithm rawhttps_signature_algorithm_from_oid(DER_Object_ID oid);
 
 // Parses PEM file of a public key
 // Reference: https://medium.com/@bn121rajesh/understanding-rsa-public-key-70d900b1033c
-PublicKey
+rawhttps_public_key
 asn1_parse_pem_public(const u8* data, int length, int* error, int is_base64_encoded) {
-    Base64_Data r = {0};
+    rawhttps_base64_data r = {0};
     
     if(is_base64_encoded) {
-        r = base64_decode(data, length);
+        r = rawhttps_base64_decode(data, length);
         if(r.error != 0) {
             fprintf(stderr, "Could not parse key base64 data\n");
             free(r.data);
             if(error) *error |= 1;
-            return (PublicKey){0};
+            return (rawhttps_public_key){0};
         }
     } else {
         r.data = (u8*)data;
@@ -471,13 +471,13 @@ asn1_parse_pem_public(const u8* data, int length, int* error, int is_base64_enco
 
     Light_Arena* arena = arena_create(65535);
     DER_Node* node = parse_der(arena, (u8*)r.data, r.length, error);
-    PublicKey pk = {0};
+    rawhttps_public_key pk = {0};
 
     #define FATAL_PEM_PUBLIC(T) if(error) *error |= 1; \
         fprintf(stderr, T); \
         if(is_base64_encoded) free(r.data); \
         arena_free(arena); \
-        return (PublicKey){0};
+        return (rawhttps_public_key){0};
 
     if(node->kind != DER_SEQUENCE) {
         FATAL_PEM_PUBLIC("Invalid format, expected DER sequence\n");
@@ -494,7 +494,7 @@ asn1_parse_pem_public(const u8* data, int length, int* error, int is_base64_enco
         FATAL_PEM_PUBLIC("Invalid format, expected OID followed by NULL\n");
     }
     
-    Signature_Algorithm alg = signature_algorithm_from_oid(oid->object_id);
+    rawhttps_signature_algorithm alg = rawhttps_signature_algorithm_from_oid(oid->object_id);
     
     if(alg != Sig_RSA) {
         FATAL_PEM_PUBLIC("Invalid format, unsupported encryption format\n");
@@ -515,12 +515,12 @@ asn1_parse_pem_public(const u8* data, int length, int* error, int is_base64_enco
     return pk;
 }
 
-PublicKey
+rawhttps_public_key
 asn1_parse_public_key(const u8* data, int length, int* error, int is_base64_encoded) {
-    Base64_Data r = {0};
+    rawhttps_base64_data r = {0};
 
     if(is_base64_encoded) {
-        r = base64_decode(data, length);
+        r = rawhttps_base64_decode(data, length);
         if(r.error != 0) {
             fprintf(stderr, "Could not parse key base64 data\n");
             if(error) *error |= 1;
@@ -539,7 +539,7 @@ asn1_parse_public_key(const u8* data, int length, int* error, int is_base64_enco
         if(error) *error |= 1;
         fprintf(stderr, "Invalid format, expected 'ssh-rsa'\n");
         free(r.data);
-        return (PublicKey){0};
+        return (rawhttps_public_key){0};
     }
     at += prefix_length;
 
@@ -550,10 +550,10 @@ asn1_parse_public_key(const u8* data, int length, int* error, int is_base64_enco
         if(error) *error |= 1;
         fprintf(stderr, "Public exponent length is too big '%d' bytes\n", exponent_length);
         free(r.data);
-        return (PublicKey){0};
+        return (rawhttps_public_key){0};
     }
 
-    HoBigInt exponent = hobig_int_new_from_memory(at, exponent_length);
+    rawhttps_ho_big_int exponent = hobig_int_new_from_memory(at, exponent_length);
     at += exponent_length;
 
     int modulus_length = LITTLE_ENDIAN_32(*(int*)at);
@@ -563,12 +563,12 @@ asn1_parse_public_key(const u8* data, int length, int* error, int is_base64_enco
         if(error) *error |= 1;
         fprintf(stderr, "Public modulus length is too big '%d' bytes\n", modulus_length);
         free(r.data);
-        return (PublicKey){0};
+        return (rawhttps_public_key){0};
     }
 
-    HoBigInt modulus = hobig_int_new_from_memory(at, modulus_length);
+    rawhttps_ho_big_int modulus = hobig_int_new_from_memory(at, modulus_length);
 
-    PublicKey result = {0};
+    rawhttps_public_key result = {0};
     result.E = exponent;
     result.N = modulus;
 
@@ -581,10 +581,10 @@ asn1_parse_public_key(const u8* data, int length, int* error, int is_base64_enco
     fprintf(stderr, X); \
     if(is_base64_encoded) free(r.data); \
     arena_free(arena); \
-    return (RSA_Certificate){0}
+    return (rawhttps_rsa_certificate){0}
 
-static Signature_Algorithm
-signature_algorithm_from_oid(DER_Object_ID oid) {
+static rawhttps_signature_algorithm
+rawhttps_signature_algorithm_from_oid(DER_Object_ID oid) {
     // All asn1 signatures of known algorithms encoded as OID
     static int oid_signature_RSA[]      = {1, 2, 840, 113549, 1, 1, 1};
     static int oid_signature_MD2WithRSA[]      = {1, 2, 840, 113549, 1, 1, 2};
@@ -625,7 +625,7 @@ signature_algorithm_from_oid(DER_Object_ID oid) {
 }
 
 static void 
-metadata_from_object_id(RSA_Certificate* certificate, DER_Object_ID oid, Cert_Metadata str) {
+metadata_from_object_id(rawhttps_rsa_certificate* certificate, DER_Object_ID oid, rawhttps_cert_metadata str) {
     // Reference: https://www.alvestrand.no/objectid/2.5.4.html
     static int attribute_types[] = {2, 5, 4};
     static int pkcs9_signatures[] = {1, 2, 840, 113549, 1, 9};
@@ -682,12 +682,12 @@ metadata_from_object_id(RSA_Certificate* certificate, DER_Object_ID oid, Cert_Me
     }
 }
 
-RSA_Certificate
+rawhttps_rsa_certificate
 asn1_parse_pem_certificate(const u8* data, int length, int* error, int is_base64_encoded) {
-    Base64_Data r = {0};
+    rawhttps_base64_data r = {0};
 
     if(is_base64_encoded) {
-        r = base64_decode(data, length);
+        r = rawhttps_base64_decode(data, length);
         if(r.error != 0) {
             fprintf(stderr, "Could not parse key base64 data\n");
             free(r.data);
@@ -701,7 +701,7 @@ asn1_parse_pem_certificate(const u8* data, int length, int* error, int is_base64
     Light_Arena* arena = arena_create(65535);
     DER_Node* node = parse_der(arena, (u8*)r.data, r.length, error);
 
-    RSA_Certificate certificate = {0};
+    rawhttps_rsa_certificate certificate = {0};
 	certificate.raw = r;
 
     DER_Node* at = node;
@@ -738,7 +738,7 @@ asn1_parse_pem_certificate(const u8* data, int length, int* error, int is_base64
                         certificate.public_key.E = seq[1]->integer.i;
                     } else if(metadata->kind == DER_OBJECT_ID) {
                         // type of signature
-                        certificate.signature_algorithm = signature_algorithm_from_oid(metadata->object_id);
+                        certificate.rawhttps_signature_algorithm = rawhttps_signature_algorithm_from_oid(metadata->object_id);
                     } else if(metadata->kind == DER_SET) {
                         DER_Node* m = metadata->set.data;
                         if(m->kind != DER_SEQUENCE) {
@@ -752,11 +752,11 @@ asn1_parse_pem_certificate(const u8* data, int length, int* error, int is_base64
                         // OID
                         DER_Object_ID oid = sq[0]->object_id;
                         DER_Node* str = sq[1];
-                        Cert_Metadata s = {0};
+                        rawhttps_cert_metadata s = {0};
                         if(str->kind == DER_PRINTABLE_STRING || str->kind == DER_IA5_STRING) {
-                            s = (Cert_Metadata){str->printable_string.length, str->printable_string.data};
+                            s = (rawhttps_cert_metadata){str->printable_string.length, str->printable_string.data};
                         } else if(str->kind == DER_UTF8_STRING) {
-                            s = (Cert_Metadata){str->utf8_string.length, str->utf8_string.data};
+                            s = (rawhttps_cert_metadata){str->utf8_string.length, str->utf8_string.data};
                         } else {
                             FATAL_CERTIFICATE_PEM("Fail to parse PEM metadata, metadata OID must be followed by a string\n");
                         }
@@ -767,7 +767,7 @@ asn1_parse_pem_certificate(const u8* data, int length, int* error, int is_base64
                         if(array_length(key) != 2 || key[0]->kind != DER_OBJECT_ID) {
                             FATAL_CERTIFICATE_PEM("Fail to parse PEM metadata, Key type must be OID + NULL\n");
                         }
-                        certificate.type = signature_algorithm_from_oid(key[0]->object_id);
+                        certificate.type = rawhttps_signature_algorithm_from_oid(key[0]->object_id);
                     }
                 }
             } break;
@@ -868,11 +868,11 @@ asn1_parse_pem_header_and_footer(
     return d;
 }
 
-PublicKey 
+rawhttps_public_key 
 asn1_parse_public_key_from_file(const char* filename, int* error) {
     int file_size = 0;
     void* memory = load_entire_file(filename, &file_size);
-    if(!memory) { if(error) *error |= 1; return (PublicKey){0}; };
+    if(!memory) { if(error) *error |= 1; return (rawhttps_public_key){0}; };
 
     // File contents are loaded
     char* at = memory;
@@ -883,20 +883,20 @@ asn1_parse_public_key_from_file(const char* filename, int* error) {
         free(memory);
         fprintf(stderr, "File format is invalid\n");
         if(error) *error = 1;
-        return (PublicKey){0};
+        return (rawhttps_public_key){0};
     }
     if(strncmp("ssh-rsa", at, sizeof("ssh-rsa") - 1) != 0) {
         free(memory);
         fprintf(stderr, "Invalid file format, expected ssh-rsa prefix\n");
         if(error) *error = 1;
-        return (PublicKey){0};
+        return (rawhttps_public_key){0};
     }
     at += sizeof("ssh-rsa") - 1;
     while(is_whitespace(*at)) { at++; at_index++; }
 
     char* start_data = at;
     while(!is_whitespace(*at)) { at++; at_index++; }
-    PublicKey pubk = asn1_parse_public_key((const u8*)start_data, at - start_data, error, 1);
+    rawhttps_public_key pubk = asn1_parse_public_key((const u8*)start_data, at - start_data, error, 1);
 
     // email may follow but we ignore it
 
@@ -904,10 +904,10 @@ asn1_parse_public_key_from_file(const char* filename, int* error) {
 }
 
 /*
-    PrivateKeyInfo ::= SEQUENCE {
+    rawhttps_private_keyInfo ::= SEQUENCE {
     version         Version,
     algorithm       AlgorithmIdentifier,
-    PrivateKey      OCTET STRING
+    rawhttps_private_key      OCTET STRING
     }
 
     AlgorithmIdentifier ::= SEQUENCE {
@@ -915,16 +915,16 @@ asn1_parse_public_key_from_file(const char* filename, int* error) {
     parameters      ANY DEFINED BY algorithm OPTIONAL
     }
  */
-PrivateKey 
+rawhttps_private_key 
 asn1_parse_pem_private_certificate_key(const unsigned char* data, int length_bytes, int* error, int is_base64_encoded) {
-    Base64_Data r = {0};
+    rawhttps_base64_data r = {0};
     if(is_base64_encoded) {
-        r = base64_decode((const u8*)data, length_bytes);
+        r = rawhttps_base64_decode((const u8*)data, length_bytes);
         if(r.error != 0) {
             fprintf(stderr, "Could not parse key base64 data\n");
             free(r.data);
             if(error) *error |= 1;
-            return (PrivateKey){0};
+            return (rawhttps_private_key){0};
         }
     } else {
         r.data = (u8*)data;
@@ -933,14 +933,14 @@ asn1_parse_pem_private_certificate_key(const unsigned char* data, int length_byt
 
     Light_Arena* arena = arena_create(65535);
     DER_Node* node = parse_der(arena, (u8*)r.data, r.length, error);
-    PrivateKey key = {0};
+    rawhttps_private_key key = {0};
 
     #define FATAL_PEM_PRIVATE(T) if(error) *error |= 1; \
         fprintf(stderr, T); \
         if(is_base64_encoded) free(r.data); \
         arena_free(arena); \
         private_key_free(key); \
-        return (PrivateKey){0};
+        return (rawhttps_private_key){0};
 
     if(node->kind != DER_SEQUENCE) {
         FATAL_PEM_PRIVATE("Could not parse private key, expected DER sequence\n");
@@ -960,7 +960,7 @@ asn1_parse_pem_private_certificate_key(const unsigned char* data, int length_byt
     }
 
     DER_Object_ID obj_id = alg_ident->sequence.data[0]->object_id;
-    Signature_Algorithm salg = signature_algorithm_from_oid(obj_id);
+    rawhttps_signature_algorithm salg = rawhttps_signature_algorithm_from_oid(obj_id);
 
     if(salg != Sig_RSA) {
         FATAL_PEM_PRIVATE("Unsupported signature algorithm, only RSA is supported\n");
@@ -979,7 +979,7 @@ asn1_parse_pem_private_certificate_key(const unsigned char* data, int length_byt
     return key;
 }
 
-PrivateKey
+rawhttps_private_key
 asn1_parse_pem_private_certificate_key_from_file(const char* filename, int* error) {
     const char header[] = "-----BEGIN PRIVATE KEY-----";
     const char footer[] = "-----END PRIVATE KEY-----";
@@ -992,13 +992,13 @@ asn1_parse_pem_private_certificate_key_from_file(const char* filename, int* erro
 
     if(error && *error) {
         if(data) free((void*)data);
-        return (PrivateKey){0};
+        return (rawhttps_private_key){0};
     }
 
     return asn1_parse_pem_private_certificate_key(data, length_bytes, error, 1);
 }
 
-RSA_Certificate
+rawhttps_rsa_certificate
 asn1_parse_pem_certificate_from_file(const char* filename, int* error) {
     const char header[] = "-----BEGIN CERTIFICATE-----";
     const char footer[] = "-----END CERTIFICATE-----";
@@ -1011,13 +1011,13 @@ asn1_parse_pem_certificate_from_file(const char* filename, int* error) {
 
     if(error && *error) {
         if(data) free((void*)data);
-        return (RSA_Certificate){0};
+        return (rawhttps_rsa_certificate){0};
     }
 
     return asn1_parse_pem_certificate(data, length_bytes, error, 1);
 }
 
-PrivateKey
+rawhttps_private_key
 asn1_parse_pem_private_key_from_file(const char* filename, int* error) {
     const char header[] = "-----BEGIN RSA PRIVATE KEY-----";
     const char footer[] = "-----END RSA PRIVATE KEY-----";
@@ -1030,13 +1030,13 @@ asn1_parse_pem_private_key_from_file(const char* filename, int* error) {
 
     if(error && *error) {
         if(data) free((void*)data);
-        return (PrivateKey){0};
+        return (rawhttps_private_key){0};
     }
 
     return asn1_parse_pem_private(data, length_bytes, error, 1);
 }
 
-PublicKey
+rawhttps_public_key
 asn1_parse_pem_public_key_from_file(const char* filename, int* error) {
     const char header[] = "-----BEGIN PUBLIC KEY-----";
     const char footer[] = "-----END PUBLIC KEY-----";
@@ -1049,7 +1049,7 @@ asn1_parse_pem_public_key_from_file(const char* filename, int* error) {
 
     if(error && *error) {
         if(data) free((void*)data);
-        return (PublicKey){0};
+        return (rawhttps_public_key){0};
     }
 
     return asn1_parse_pem_public(data, length_bytes, error, 1);

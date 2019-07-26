@@ -15,14 +15,14 @@ extern u64 random_integer(u64 min, u64 max);
     (((X) & 0xff00) << 40) | \
     (((X) & 0xff) << 56))
 
-Decrypt_Data
-decrypt_pkcs1_v1_5(PrivateKey pk, HoBigInt encrypted, int* error) {
-    HoBigInt decr = hobig_int_mod_div(&encrypted, &pk.PrivateExponent, &pk.public.N);
+rawhttps_decrypt_data
+decrypt_pkcs1_v1_5(rawhttps_private_key pk, rawhttps_ho_big_int encrypted, int* error) {
+    rawhttps_ho_big_int decr = hobig_int_mod_div(&encrypted, &pk.PrivateExponent, &pk.public.N);
    // if(array_length(decr.value) % 32 != 0) {
    //     // error, encrypted message does not contain 2048 bits
    //     fprintf(stderr, "Encrypted message must contain 2048 or 4096 bits (length = %d)\n", array_length(decr.value));
    //     if(error) *error |= 1;
-   //     return (Decrypt_Data){0};
+   //     return (rawhttps_decrypt_data){0};
    // }
 
     if(((decr.value[array_length(decr.value) - 1] & 0xffff000000000000) >> 48) != 0x0002) {
@@ -48,7 +48,7 @@ decrypt_pkcs1_v1_5(PrivateKey pk, HoBigInt encrypted, int* error) {
 end_loop:
     index /= 8; // index in bytes
 
-    Decrypt_Data result = {0};
+    rawhttps_decrypt_data result = {0};
     // index has the bit count from the base
     result.data = calloc(1, index);
     result.length = index;
@@ -62,12 +62,12 @@ end_loop:
     return result;
 }
 
-HoBigInt
-encrypt_pkcs1_v1_5(PublicKey pk, const char* in, int length_bytes) {
+rawhttps_ho_big_int
+encrypt_pkcs1_v1_5(rawhttps_public_key pk, const char* in, int length_bytes) {
     unsigned char out[256];
 
     // Cannot encrypt something bigger than 128 bits or 16 bytes
-    if(length_bytes > 32) return (HoBigInt){0};
+    if(length_bytes > 32) return (rawhttps_ho_big_int){0};
 
     // Always mode 2, meaning encryption
     // First 16 bits are 0x0002 for mode 2
@@ -83,9 +83,9 @@ encrypt_pkcs1_v1_5(PublicKey pk, const char* in, int length_bytes) {
 
     memcpy(out+padding_byte_count + 3, in, length_bytes);
 
-    HoBigInt rsa_plain_text = hobig_int_new_from_memory(out, 256);
+    rawhttps_ho_big_int rsa_plain_text = hobig_int_new_from_memory(out, 256);
 
-    HoBigInt encrypted = hobig_int_mod_div(&rsa_plain_text, &pk.E, &pk.N);
+    rawhttps_ho_big_int encrypted = hobig_int_mod_div(&rsa_plain_text, &pk.E, &pk.N);
 
     hobig_int_print(encrypted);
     printf("\n");

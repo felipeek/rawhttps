@@ -4,19 +4,19 @@
 #include <stdio.h>
 #include "logger.h"
 
-void util_dynamic_buffer_new(dynamic_buffer* db, long long capacity)
+void rawhttps_util_dynamic_buffer_new(rawhttps_util_dynamic_buffer* db, long long capacity)
 {
 	db->buffer = calloc(1, capacity);
 	db->capacity = capacity;
 	db->size = 0;
 }
 
-void util_dynamic_buffer_free(dynamic_buffer* db)
+void rawhttps_util_dynamic_buffer_free(rawhttps_util_dynamic_buffer* db)
 {
 	free(db->buffer);
 }
 
-void util_dynamic_buffer_add(dynamic_buffer* db, const void* msg, long long msg_size)
+void rawhttps_util_dynamic_buffer_add(rawhttps_util_dynamic_buffer* db, const void* msg, long long msg_size)
 {
 	while (db->size + msg_size + 1 >= db->capacity)
 	{
@@ -29,7 +29,7 @@ void util_dynamic_buffer_add(dynamic_buffer* db, const void* msg, long long msg_
 	db->size += msg_size;
 }
 
-unsigned char* util_file_to_memory(const char* path, int* file_size)
+unsigned char* rawhttps_util_file_to_memory(const char* path, int* file_size)
 {
 	FILE* file = fopen(path, "rb");
 	fseek(file, 0, SEEK_END);

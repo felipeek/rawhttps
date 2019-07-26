@@ -11,10 +11,10 @@ typedef struct
 	rawhttps_security_parameters pending_security_parameters;
 	rawhttps_connection_state client_connection_state;
 	rawhttps_connection_state server_connection_state;
-	dynamic_buffer handshake_messages;
+	rawhttps_util_dynamic_buffer handshake_messages;
 	int handshake_completed;
-	RSA_Certificate certificate;
-	PrivateKey private_key;
+	rawhttps_rsa_certificate certificate;
+	rawhttps_private_key private_key;
 } rawhttps_tls_state;
 
 int rawhttps_tls_state_create(rawhttps_tls_state* ts, const char* certificate_path, const char* private_key_path);
