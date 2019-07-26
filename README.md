@@ -1,8 +1,8 @@
 # TODO
 
 ## critical
-- [ ] Log all keys and useful information when log level is DEBUG
-- [ ] Logging should be thread-safe
+- [x] Log all keys and useful information when log level is DEBUG
+- [x] Logging should be thread-safe
 - [ ] Crypto functions should use logger
 - [ ] Resolve leaks with crypto functions
 - [ ] Implement ALERT protocol

@@ -168,11 +168,26 @@ static void connection_state_from_security_parameters_generate(const rawhttps_se
 static void pending_client_cipher_apply(rawhttps_tls_state* ts)
 {
 	connection_state_from_security_parameters_generate(&ts->pending_security_parameters, &ts->client_connection_state, CONNECTION_END_CLIENT);
+	rawhttps_logger_log_debug("Client cipher was applied");
+	rawhttps_logger_log_hex(LOGGER_LOG_LEVEL_DEBUG, "Client Mac Key", ts->client_connection_state.mac_key,
+		ts->client_connection_state.security_parameters.mac_key_length);
+	rawhttps_logger_log_hex(LOGGER_LOG_LEVEL_DEBUG, "Client Enc Key", ts->client_connection_state.cipher_state.enc_key,
+		ts->client_connection_state.security_parameters.enc_key_length);
+	rawhttps_logger_log_hex(LOGGER_LOG_LEVEL_DEBUG, "Client Fixed IV", ts->client_connection_state.cipher_state.iv,
+		ts->client_connection_state.security_parameters.fixed_iv_length);
 }
 
 static void pending_server_cipher_apply(rawhttps_tls_state* ts)
 {
 	connection_state_from_security_parameters_generate(&ts->pending_security_parameters, &ts->server_connection_state, CONNECTION_END_SERVER);
+	rawhttps_logger_log_debug("Server cipher was applied");
+	rawhttps_logger_log_hex(LOGGER_LOG_LEVEL_DEBUG, "Server Mac Key", ts->server_connection_state.mac_key,
+		ts->server_connection_state.security_parameters.mac_key_length);
+	rawhttps_logger_log_hex(LOGGER_LOG_LEVEL_DEBUG, "Server Enc Key", ts->server_connection_state.cipher_state.enc_key,
+		ts->server_connection_state.security_parameters.enc_key_length);
+	rawhttps_logger_log_hex(LOGGER_LOG_LEVEL_DEBUG, "Server Fixed IV", ts->server_connection_state.cipher_state.iv,
+		ts->server_connection_state.security_parameters.fixed_iv_length);
+
 	// Reset security parameters
 	security_parameters_set_for_cipher_suite(TLS_NULL_WITH_NULL_NULL, &ts->pending_security_parameters);
 }
@@ -240,8 +255,8 @@ static int handshake_client_hello_get(rawhttps_tls_state* ts, int connected_sock
 	*client_cipher_suites = malloc(p.message.chm.cipher_suites_length * 2);
 	memcpy(*client_cipher_suites, p.message.chm.cipher_suites, p.message.chm.cipher_suites_length * 2);
 	*client_cipher_suites_length = p.message.chm.cipher_suites_length;
-	//printf("Printing client random number...\n");
-	//util_buffer_print_hex(p.message.chm.client_random, (long long)CLIENT_RANDOM_SIZE);
+	rawhttps_logger_log_hex(LOGGER_LOG_LEVEL_DEBUG, "Client Random", ts->pending_security_parameters.client_random,
+		(long long)CLIENT_RANDOM_SIZE);
 
 	rawhttps_tls_parser_handshake_packet_release(&p);
 
@@ -253,8 +268,8 @@ static int handshake_server_hello_send(rawhttps_tls_state* ts, int connected_soc
 	unsigned char server_random[SERVER_RANDOM_SIZE];
 	server_hello_random_number_generate(server_random);
 	memcpy(ts->pending_security_parameters.server_random, server_random, SERVER_RANDOM_SIZE);
-	//printf("Printing server random number...\n");
-	//util_buffer_print_hex(server_random, (long long)CLIENT_RANDOM_SIZE);
+	rawhttps_logger_log_hex(LOGGER_LOG_LEVEL_DEBUG, "Server Random", ts->pending_security_parameters.server_random,
+		(long long)SERVER_RANDOM_SIZE);
 	if (rawhttps_tls_sender_handshake_server_hello_message_send(&ts->server_connection_state, connected_socket,
 		selected_cipher_suite, server_random, &ts->handshake_messages))
 		return -1;
@@ -317,15 +332,13 @@ static int handshake_client_key_exchange_get(rawhttps_tls_state* ts, int connect
 		return -1;
 	}
 
-	//printf("Printing premaster secret...\n");
-	//util_buffer_print_hex(pre_master_secret, (long long)PRE_MASTER_SECRET_SIZE);
+	rawhttps_logger_log_hex(LOGGER_LOG_LEVEL_DEBUG, "Decrypted PreMasterSecret", pre_master_secret, (long long)PRE_MASTER_SECRET_SIZE);
 
 	rsa_master_secret_generate(pre_master_secret, ts->pending_security_parameters.client_random,
 		ts->pending_security_parameters.server_random, master_secret);
 	memcpy(ts->pending_security_parameters.master_secret, master_secret, MASTER_SECRET_SIZE);
 
-	//printf("Printing MASTER SECRET...");
-	//util_buffer_print_hex(master_secret, MASTER_SECRET_SIZE);
+	rawhttps_logger_log_hex(LOGGER_LOG_LEVEL_DEBUG, "Master Secret", master_secret, (long long)MASTER_SECRET_SIZE);
 
 	rawhttps_tls_parser_handshake_packet_release(&p);
 

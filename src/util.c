@@ -29,22 +29,6 @@ void util_dynamic_buffer_add(dynamic_buffer* db, const void* msg, long long msg_
 	db->size += msg_size;
 }
 
-void util_buffer_print_hex(const unsigned char* msg, int size)
-{
-	char aux[16];
-	dynamic_buffer log_db;
-	util_dynamic_buffer_new(&log_db, 1024);
-
-	for (long long i = 0; i < size; ++i)
-	{
-		int s = sprintf(aux, "0x%02hhX, ", msg[i]);
-		util_dynamic_buffer_add(&log_db, aux, s);
-	}
-
-	rawhttps_logger_log_info("%.*s", (int)log_db.size, log_db.buffer);
-	util_dynamic_buffer_free(&log_db);
-}
-
 unsigned char* util_file_to_memory(const char* path, int* file_size)
 {
 	FILE* file = fopen(path, "rb");

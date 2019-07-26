@@ -59,6 +59,7 @@ void close_server(int signum)
 {
 	// Stops the server and releases resources
 	rawhttps_server_destroy(&server);
+	rawhttps_logger_destroy();
 }
 
 int main(int argc, char** argv)
@@ -71,7 +72,7 @@ int main(int argc, char** argv)
 
 	signal(SIGINT, close_server);
 
-	rawhttps_logger_level_set(LOGGER_LOG_LEVEL_DEBUG);
+	rawhttps_logger_init(LOGGER_LOG_LEVEL_DEBUG);
 
 	rawhttps_server_init(&server, 8080, argv[1], strlen(argv[1]), argv[2], strlen(argv[2]));
 
