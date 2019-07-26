@@ -3,6 +3,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <pthread.h>
+#include <sys/types.h>
+#include <sys/syscall.h>
 #include "util.h"
 
 static rawhttps_log_level log_level = RAWHTTPS_LOG_LEVEL_ERROR;
@@ -16,10 +18,13 @@ void rawhttps_logger_init(rawhttps_log_level level)
 
 static void logger_log_out(FILE* target, const char* level, const char* format, va_list argptr)
 {
-    size_t needed = snprintf(NULL, 0, "[%s] %s\n", level, format) + 1;
+	pid_t pid = syscall(__NR_gettid);
+    size_t needed = snprintf(NULL, 0, "[%s]\t[%d]\t%s\n", level, pid, format) + 1;
     char* buf = malloc(needed);
-    sprintf(buf, "[%s] %s\n", level, format);
+    sprintf(buf, "[%s]\t[%d]\t%s\n", level, pid, format);
+	pthread_mutex_lock(&log_mutex);
     vfprintf(target, buf, argptr);
+	pthread_mutex_unlock(&log_mutex);
     free(buf);
 }
 

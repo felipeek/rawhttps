@@ -48,6 +48,8 @@ ssize_t rawhttps_response_flush(const void* internal, rawhttps_response* respons
 	int content_length_buffer_written = sprintf(content_length_buffer, "%lld", response->response_content_size);
 	rawhttps_response_add_header(response, CONTENT_LENGTH_HEADER, sizeof(CONTENT_LENGTH_HEADER) - 1,
 		content_length_buffer, content_length_buffer_written);
+	rawhttps_response_add_header(response, "Connection", sizeof("Connection") - 1,
+		"keep-alive", sizeof("keep-alive") - 1);
 
 	rawhttps_util_dynamic_buffer data_to_send;
 	rawhttps_util_dynamic_buffer_new(&data_to_send, 1024);
