@@ -28,6 +28,25 @@ static void logger_log_out(FILE* target, const char* level, const char* format, 
     free(buf);
 }
 
+void rawhttps_logger_log(rawhttps_log_level log_level, const char* msg)
+{
+	switch (log_level)
+	{
+		case RAWHTTPS_LOG_LEVEL_DEBUG: {
+			rawhttps_logger_log_debug(msg);
+		} break;
+		case RAWHTTPS_LOG_LEVEL_INFO: {
+			rawhttps_logger_log_info(msg);
+		} break;
+		case RAWHTTPS_LOG_LEVEL_WARNING: {
+			rawhttps_logger_log_warning(msg);
+		} break;
+		case RAWHTTPS_LOG_LEVEL_ERROR: {
+			rawhttps_logger_log_error(msg);
+		} break;
+	}
+}
+
 void rawhttps_logger_log_debug(const char* format, ...)
 {
     if (log_level > RAWHTTPS_LOG_LEVEL_DEBUG) return;

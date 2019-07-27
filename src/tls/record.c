@@ -197,6 +197,102 @@ static int record_data_decrypt(const rawhttps_connection_state* client_cs, unsig
 	return -1;
 }
 
+static void alert_packet_print(alert_level level, alert_description description)
+{
+	rawhttps_log_level log_level = RAWHTTPS_LOG_LEVEL_WARNING;
+	switch (level)
+	{
+		case ALERT_LEVEL_WARNING: {
+			log_level = RAWHTTPS_LOG_LEVEL_WARNING;
+		} break;
+		case ALERT_LEVEL_FATAL: {
+			log_level = RAWHTTPS_LOG_LEVEL_ERROR;
+		} break;
+	}
+
+	switch (description)
+	{
+		case CLOSE_NOTIFY: {
+			rawhttps_logger_log(log_level, "CLOSE_NOTIFY alert received");
+		} break;
+		case UNEXPECTED_MESSAGE: {
+			rawhttps_logger_log(log_level, "UNEXPECTED_MESSAGE alert received");
+		} break;
+		case BAD_RECORD_MAC: {
+			rawhttps_logger_log(log_level, "BAD_RECORD_MAC alert received");
+		} break;
+		case DECRYPTION_FAILED_RESERVED: {
+			rawhttps_logger_log(log_level, "DECRYPTION_FAILED_RESERVED alert received");
+		} break;
+		case RECORD_OVERFLOW: {
+			rawhttps_logger_log(log_level, "RECORD_OVERFLOW alert received");
+		} break;
+		case DECOMPRESSION_FAILURE: {
+			rawhttps_logger_log(log_level, "DECOMPRESSION_FAILURE alert received");
+		} break;
+		case HANDSHAKE_FAILURE: {
+			rawhttps_logger_log(log_level, "HANDSHAKE_FAILURE alert received");
+		} break;
+		case NO_CERTIFICATE_RESERVED: {
+			rawhttps_logger_log(log_level, "NO_CERTIFICATE_RESERVED alert received");
+		} break;
+		case BAD_CERTIFICATE: {
+			rawhttps_logger_log(log_level, "BAD_CERTIFICATE alert received");
+		} break;
+		case UNSUPPORTED_CERTIFICATE: {
+			rawhttps_logger_log(log_level, "UNSUPPORTED_CERTIFICATE alert received");
+		} break;
+		case CERTIFICATE_REVOKED: {
+			rawhttps_logger_log(log_level, "CERTIFICATE_REVOKED alert received");
+		} break;
+		case CERTIFICATE_EXPIRED: {
+			rawhttps_logger_log(log_level, "CERTIFICATE_EXPIRED alert received");
+		} break;
+		case CERTIFICATE_UNKNOWN: {
+			rawhttps_logger_log(log_level, "CERTIFICATE_UNKNOWN alert received");
+		} break;
+		case ILLEGAL_PARAMETER: {
+			rawhttps_logger_log(log_level, "ILLEGAL_PARAMETER alert received");
+		} break;
+		case UNKNOWN_CA: {
+			rawhttps_logger_log(log_level, "UNKNOWN_CA alert received");
+		} break;
+		case ACCESS_DENIED: {
+			rawhttps_logger_log(log_level, "ACCESS_DENIED alert received");
+		} break;
+		case DECODE_ERROR: {
+			rawhttps_logger_log(log_level, "DECODE_ERROR alert received");
+		} break;
+		case DECRYPT_ERROR: {
+			rawhttps_logger_log(log_level, "DECRYPT_ERROR alert received");
+		} break;
+		case EXPORT_RESTRICTION_RESERVED: {
+			rawhttps_logger_log(log_level, "EXPORT_RESTRICTION_RESERVED alert received");
+		} break;
+		case PROTOCOL_VERSION: {
+			rawhttps_logger_log(log_level, "PROTOCOL_VERSION alert received");
+		} break;
+		case INSUFFICIENT_SECURITY: {
+			rawhttps_logger_log(log_level, "INSUFFICIENT_SECURITY alert received");
+		} break;
+		case INTERNAL_ERROR: {
+			rawhttps_logger_log(log_level, "INTERNAL_ERROR alert received");
+		} break;
+		case USER_CANCELED: {
+			rawhttps_logger_log(log_level, "USER_CANCELED alert received");
+		} break;
+		case NO_RENEGOTIATION: {
+			rawhttps_logger_log(log_level, "NO_RENEGOTIATION alert received");
+		} break;
+		case UNSUPPORTED_EXTENSION: {
+			rawhttps_logger_log(log_level, "UNSUPPORTED_EXTENSION alert received");
+		} break;
+		default: {
+			rawhttps_logger_log(log_level, "UNDEFINED alert received");
+		} break;
+	}
+}
+
 // gets the data of the next record packet and stores in the received buffer. The type is also returned via 'type'
 long long rawhttps_record_get(rawhttps_record_buffer* record_buffer, int connected_socket,
 	unsigned char data[RECORD_PROTOCOL_TLS_PLAIN_TEXT_FRAGMENT_MAX_SIZE], protocol_type* type, rawhttps_connection_state* client_cs)
@@ -219,6 +315,39 @@ long long rawhttps_record_get(rawhttps_record_buffer* record_buffer, int connect
 	rawhttps_record_buffer_clear(record_buffer);
 
 	++client_cs->sequence_number;
+
+	// Test for alerts or whether the record packet has some error
+	switch (*type)
+	{
+		case ALERT_PROTOCOL: {
+			if (decrypted_record_data_length != 2)
+			{
+				// malformed alert packet
+				return -1;
+			}
+			alert_level level = data[0];
+			alert_description description = data[1];
+
+			alert_packet_print(level, description);
+
+			if (level == ALERT_LEVEL_FATAL)
+			{
+				// @TODO: handle accordingly
+				rawhttps_logger_log_info("An FATAL alert was received! Connection shall be closed");
+				return -1;
+			}
+			if (description == CLOSE_NOTIFY)
+			{
+				// @TODO: instead of just returning error, we need to return something meaningful to the caller
+				// saying that the connection was closed gracefully
+				rawhttps_logger_log_info("CLOSE_NOTIFY was received! Connection shall be closed");
+				return -1;
+			}
+		} break;
+		default: {
+
+		} break;
+	}
 
 	return decrypted_record_data_length;
 }

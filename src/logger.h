@@ -11,6 +11,7 @@ typedef enum
 
 void rawhttps_logger_init(rawhttps_log_level level);
 void rawhttps_logger_destroy();
+void rawhttps_logger_log(rawhttps_log_level log_level, const char* msg);
 void rawhttps_logger_log_debug(const char* format, ...);
 void rawhttps_logger_log_info(const char* format, ...);
 void rawhttps_logger_log_warning(const char* format, ...);

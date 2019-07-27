@@ -6,6 +6,9 @@
 - [ ] Crypto functions should use logger
 - [ ] Resolve leaks with crypto functions
 - [ ] Implement ALERT protocol
+	- [x] Fetch ALERT
+	- [ ] Wait for client CLOSE_NOTIFY gracefully in server loop
+	- [ ] Handle gracefully the received alert in record layer, instead of throwing generic -1 error
 - [ ] Check FINISHED's `verify_data`
 - [ ] Use scheduler instead of one thread per connection
 - [ ] Stop running threads in rawhttps_server_destroy

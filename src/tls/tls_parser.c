@@ -146,8 +146,6 @@ int rawhttps_tls_parser_application_data_parse(unsigned char data[RECORD_PROTOCO
 	assert(*bytes_written < RECORD_PROTOCOL_TLS_PLAIN_TEXT_FRAGMENT_MAX_SIZE);
 	memcpy(data, ptr, *bytes_written);
 	
-	// @TODO: We must decide how we will release packets.
-
 	// Release Message Data
 	higher_layer_buffer_clear(&ps->higher_layer_buffer);
 	return 0;
@@ -166,8 +164,6 @@ int rawhttps_tls_parser_change_cipher_spec_parse(change_cipher_spec_packet* pack
 		return -1;
 	packet->message = *ptr;
 	
-	// @TODO: We must decide how we will release packets.
-
 	// Release Message Data
 	higher_layer_buffer_clear(&ps->higher_layer_buffer);
 	return 0;

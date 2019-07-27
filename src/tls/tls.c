@@ -535,6 +535,9 @@ long long rawhttps_tls_read(rawhttps_tls_state* ts, int connected_socket,
 			}
 			return bytes_written;
 		} break;
+		case ALERT_PROTOCOL: {
+
+		} break;
 	}
 
 	return -1;
