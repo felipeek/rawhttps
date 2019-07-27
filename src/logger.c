@@ -10,6 +10,15 @@
 static rawhttps_log_level log_level = RAWHTTPS_LOG_LEVEL_ERROR;
 static pthread_mutex_t log_mutex;
 
+static const char color_reset[]   = "\x1B[0m";
+static const char color_red[]     = "\x1B[31m";
+static const char color_green[]   = "\x1B[32m";
+static const char color_yellow[]  = "\x1B[33m";
+static const char color_blue[]    = "\x1B[34m";
+static const char color_magenta[] = "\x1B[35m";
+static const char color_cyan[]    = "\x1B[36m";
+static const char color_white[]   = "\x1B[37m";
+
 void rawhttps_logger_init(rawhttps_log_level level)
 {
 	pthread_mutex_init(&log_mutex, NULL);
@@ -52,7 +61,9 @@ void rawhttps_logger_log_debug(const char* format, ...)
     if (log_level > RAWHTTPS_LOG_LEVEL_DEBUG) return;
     va_list argptr;
     va_start(argptr, format);
-    logger_log_out(stdout, "DEBUG", format, argptr);
+	char debug[256];
+	sprintf(debug, "%sDEBUG%s", color_cyan, color_reset);
+    logger_log_out(stdout, debug, format, argptr);
     va_end(argptr);
 }
 
@@ -61,7 +72,9 @@ void rawhttps_logger_log_info(const char* format, ...)
     if (log_level > RAWHTTPS_LOG_LEVEL_INFO) return;
     va_list argptr;
     va_start(argptr, format);
-    logger_log_out(stdout, "INFO", format, argptr);
+	char info[256];
+	sprintf(info, "%sINFO%s", color_white, color_reset);
+    logger_log_out(stdout, info, format, argptr);
     va_end(argptr);
 }
 
@@ -70,7 +83,9 @@ void rawhttps_logger_log_warning(const char* format, ...)
     if (log_level > RAWHTTPS_LOG_LEVEL_WARNING) return;
     va_list argptr;
     va_start(argptr, format);
-    logger_log_out(stderr, "WARNING", format, argptr);
+	char warning[256];
+	sprintf(warning, "%sWARNING%s", color_yellow, color_reset);
+    logger_log_out(stderr, warning, format, argptr);
     va_end(argptr);
 }
 
@@ -79,7 +94,9 @@ void rawhttps_logger_log_error(const char* format, ...)
     if (log_level > RAWHTTPS_LOG_LEVEL_ERROR) return;
     va_list argptr;
     va_start(argptr, format);
-    logger_log_out(stderr, "ERROR", format, argptr);
+	char error[256];
+	sprintf(error, "%sERROR%s", color_red, color_reset);
+    logger_log_out(stderr, error, format, argptr);
     va_end(argptr);
 }
 

@@ -5,10 +5,7 @@
 - [x] Logging should be thread-safe
 - [ ] Crypto functions should use logger
 - [ ] Resolve leaks with crypto functions
-- [ ] Implement ALERT protocol
-	- [x] Fetch ALERT
-	- [ ] Wait for client CLOSE_NOTIFY gracefully in server loop
-	- [ ] Handle gracefully the received alert in record layer, instead of throwing generic -1 error
+- [x] Implement ALERT protocol
 - [ ] Check FINISHED's `verify_data`
 - [ ] Use scheduler instead of one thread per connection
 - [ ] Stop running threads in rawhttps_server_destroy
@@ -17,6 +14,7 @@
 - [ ] Implement at least one STREAM cipher and maybe one AEAD cipher
 
 ## far future
+- [ ] Modify code to support HTTP keep-alive
 - [ ] Implement session-id
 - [ ] Implement compression methods
 - [ ] Implement extensions

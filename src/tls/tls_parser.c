@@ -77,11 +77,33 @@ static long long tls_parser_fetch_next_record(rawhttps_tls_parser_state* ps, int
 	}
 
 	long long size_read;
+	record_status status;
 	if ((size_read = rawhttps_record_get(&ps->record_buffer, connected_socket,
-		ps->higher_layer_buffer.buffer + ps->higher_layer_buffer.buffer_end, &ps->type, client_cs)) < 0)
+		ps->higher_layer_buffer.buffer + ps->higher_layer_buffer.buffer_end, &ps->type, client_cs, &status)) < 0)
 	{
-		rawhttps_logger_log_error("Error getting next record data");
-		return -1;
+		switch (status)
+		{
+			case RAWHTTPS_RECORD_STATUS_NONE: {
+				// if size_read < 0, record status must be set
+				assert(0);
+			} break;
+			case RAWHTTPS_RECORD_STATUS_CLOSE_NOTIFY: {
+				rawhttps_logger_log_info("CLOSE_NOTIFY received. Connection shall be closed.");
+				return -1;
+			} break;
+			case RAWHTTPS_RECORD_STATUS_FATAL_ALERT: {
+				rawhttps_logger_log_error("Error getting next record data: received a fatal alert");
+				return -1;
+			} break;
+			case RAWHTTPS_RECORD_STATUS_IO_ERROR: {
+				rawhttps_logger_log_error("Error getting next record data: I/O error");
+				return -1;
+			} break;
+			case RAWHTTPS_RECORD_STATUS_MALFORMED_PACKET: {
+				rawhttps_logger_log_error("Error getting next record data: malformed packet");
+				return -1;
+			} break;
+		}
 	}
 	if (size_read == 0)
 	{

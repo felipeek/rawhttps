@@ -117,6 +117,9 @@ static void* rawhttps_server_new_connection_callback(void* arg)
 		return NULL;
 	}
 
+	// In the future, if we want to support keep-alive, we need to add a loop here.
+	// We would need to differ between a CLOSE_NOTIFY and a real error
+
 	rawhttps_http_parser_state hps;
 	rawhttps_request request;
 	rawhttps_http_parser_state_create(&hps, &ts);

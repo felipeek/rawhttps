@@ -293,22 +293,33 @@ static void alert_packet_print(alert_level level, alert_description description)
 	}
 }
 
-// gets the data of the next record packet and stores in the received buffer. The type is also returned via 'type'
+// Gets the data of the next record packet and stores in the received buffer. The type is also returned via 'type'
 long long rawhttps_record_get(rawhttps_record_buffer* record_buffer, int connected_socket,
-	unsigned char data[RECORD_PROTOCOL_TLS_PLAIN_TEXT_FRAGMENT_MAX_SIZE], protocol_type* type, rawhttps_connection_state* client_cs)
+	unsigned char data[RECORD_PROTOCOL_TLS_PLAIN_TEXT_FRAGMENT_MAX_SIZE], protocol_type* type, rawhttps_connection_state* client_cs,
+	record_status* status)
 {
 	unsigned char* ptr;
+	*status = RAWHTTPS_RECORD_STATUS_NONE;
 
 	if (record_guarantee_record(record_buffer, connected_socket))
+	{
+		*status = RAWHTTPS_RECORD_STATUS_IO_ERROR;
 		return -1;
+	}
 
 	if (record_get_next_bytes(record_buffer, 5, &ptr))
+	{
+		*status = RAWHTTPS_RECORD_STATUS_IO_ERROR;
 		return -1;
+	}
 	unsigned short record_length = LITTLE_ENDIAN_16(ptr + 3);
 	*type = *ptr;
 	assert(record_length <= RECORD_PROTOCOL_TLS_CIPHER_TEXT_FRAGMENT_MAX_SIZE);
 	if (record_get_next_bytes(record_buffer, record_length, &ptr))
+	{
+		*status = RAWHTTPS_RECORD_STATUS_IO_ERROR;
 		return -1;
+	}
 
 	long long decrypted_record_data_length = record_data_decrypt(client_cs, ptr, record_length, data);
 	assert(decrypted_record_data_length <= RECORD_PROTOCOL_TLS_PLAIN_TEXT_FRAGMENT_MAX_SIZE);
@@ -323,6 +334,7 @@ long long rawhttps_record_get(rawhttps_record_buffer* record_buffer, int connect
 			if (decrypted_record_data_length != 2)
 			{
 				// malformed alert packet
+				*status = RAWHTTPS_RECORD_STATUS_MALFORMED_PACKET;
 				return -1;
 			}
 			alert_level level = data[0];
@@ -330,18 +342,18 @@ long long rawhttps_record_get(rawhttps_record_buffer* record_buffer, int connect
 
 			alert_packet_print(level, description);
 
-			if (level == ALERT_LEVEL_FATAL)
-			{
-				// @TODO: handle accordingly
-				rawhttps_logger_log_info("An FATAL alert was received! Connection shall be closed");
-				return -1;
-			}
 			if (description == CLOSE_NOTIFY)
 			{
-				// @TODO: instead of just returning error, we need to return something meaningful to the caller
-				// saying that the connection was closed gracefully
-				rawhttps_logger_log_info("CLOSE_NOTIFY was received! Connection shall be closed");
+				*status = RAWHTTPS_RECORD_STATUS_CLOSE_NOTIFY;
+				rawhttps_logger_log_warning("CLOSE_NOTIFY was received! Connection shall be closed");
 				return -1;
+			} else if (level == ALERT_LEVEL_FATAL) {
+				*status = RAWHTTPS_RECORD_STATUS_FATAL_ALERT;
+				rawhttps_logger_log_error("An FATAL alert was received! Connection shall be closed");
+				return -1;
+			} else if (level == ALERT_LEVEL_WARNING) {
+				// If we received a warning alert, we just try it again
+				return rawhttps_record_get(record_buffer, connected_socket, data, type, client_cs, status);
 			}
 		} break;
 		default: {
