@@ -3,7 +3,7 @@ CFLAGS = -Wall -Iinclude -g -m64
 LDFLAGS= -lpthread
 
 # Final binary
-BIN = ssltests
+BIN = rawhttps.a
 # Put all auto generated stuff to this build dir.
 BUILD_DIR = ./bin
 
@@ -26,7 +26,7 @@ $(BUILD_DIR)/$(BIN) : $(OBJ)
 	# Create build directories - same structure as sources.
 	mkdir -p $(@D)
 	# Just link all the object files.
-	$(CC) $(CFLAGS) $^ $(LDFLAGS) -o $@
+	ar rcs $@ $^
 
 # Build target for every single object file.
 $(BUILD_DIR)/%.o : %.asm
