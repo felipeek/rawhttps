@@ -247,8 +247,7 @@ int rawhttps_tls_parser_handshake_packet_parse(handshake_packet* packet, rawhttp
 			return -1;
 		} break;
 		case FINISHED_MESSAGE: {
-			// TODO
-			//12 bytes of verify data
+			memcpy(packet->message.fm.verify_data, ptr, VERIFY_DATA_SIZE); ptr += VERIFY_DATA_SIZE;
 		} break;
 	}
 

@@ -215,13 +215,18 @@ static void pending_server_cipher_apply(rawhttps_tls_state* ts)
 }
 
 static void verify_data_generate(const rawhttps_util_dynamic_buffer* all_handshake_messages, unsigned char master_secret[MASTER_SECRET_SIZE],
-	unsigned char verify_data[12])
+	unsigned char verify_data[VERIFY_DATA_SIZE], int for_server)
 {
 	// @TODO: check these hardcoded lengths and create constants if possible
 	unsigned char handshake_messages_hash[32];
 	rawhttps_sha256(all_handshake_messages->buffer, all_handshake_messages->size, handshake_messages_hash);
 
-	prf(master_secret, MASTER_SECRET_SIZE, "server finished", sizeof("server finished") - 1, handshake_messages_hash, 32, verify_data, 12);
+	if (for_server)
+		prf(master_secret, MASTER_SECRET_SIZE, "server finished", sizeof("server finished") - 1,
+			handshake_messages_hash, 32, verify_data, VERIFY_DATA_SIZE);
+	else
+		prf(master_secret, MASTER_SECRET_SIZE, "client finished", sizeof("client finished") - 1,
+			handshake_messages_hash, 32, verify_data, VERIFY_DATA_SIZE);
 }
 
 static int cipher_suite_choose(cipher_suite_type* chosen_cipher_suite, const unsigned short* client_cipher_suites,
@@ -423,6 +428,11 @@ static int handshake_finished_get(rawhttps_tls_state* ts, int connected_socket)
 		return -1;
 	}
 
+	// We must generate the verify_data before parsing the packet,
+	// otherwise the received finished message will be already added to the hash
+	unsigned char verify_data[VERIFY_DATA_SIZE];
+	verify_data_generate(&ts->handshake_messages, ts->client_connection_state.security_parameters.master_secret, verify_data, 0);
+
 	if (rawhttps_tls_parser_handshake_packet_parse(&p, &ts->ps, connected_socket, &ts->client_connection_state, &ts->handshake_messages))
 	{
 		rawhttps_tls_parser_handshake_packet_release(&p);
@@ -435,6 +445,13 @@ static int handshake_finished_get(rawhttps_tls_state* ts, int connected_socket)
 		rawhttps_tls_parser_handshake_packet_release(&p);
 		return -1;
 	}
+
+	if (memcmp(verify_data, p.message.fm.verify_data, VERIFY_DATA_SIZE))
+	{
+		rawhttps_logger_log_error("Client sent an invalid verify_data");
+		return -1;
+	}
+	rawhttps_logger_log_info("Client verify_data verified successfully");
 	
 	rawhttps_tls_parser_handshake_packet_release(&p);
 	return 0;
@@ -450,9 +467,9 @@ static int handshake_change_cipher_spec_send(rawhttps_tls_state* ts, int connect
 
 static int handshake_finished_send(rawhttps_tls_state* ts, int connected_socket)
 {
-	unsigned char verify_data[12];
+	unsigned char verify_data[VERIFY_DATA_SIZE];
 	verify_data_generate(&ts->handshake_messages,
-		ts->server_connection_state.security_parameters.master_secret, verify_data);
+		ts->server_connection_state.security_parameters.master_secret, verify_data, 1);
 	rawhttps_tls_sender_handshake_finished_message_send(&ts->server_connection_state, connected_socket, verify_data);
 
 	return 0;

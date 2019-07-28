@@ -5,8 +5,9 @@
 - [x] Logging should be thread-safe
 - [ ] Crypto functions should use logger
 - [ ] Resolve leaks with crypto functions
-- [x] Implement ALERT protocol
-- [ ] Check FINISHED's `verify_data`
+- [x] Implement ALERT protocol (receiver)
+- [ ] Implement ALERT protocol (sender) and send meaningful messages
+- [x] Check FINISHED's `verify_data`
 - [ ] Use scheduler instead of one thread per connection
 - [ ] Stop running threads in rawhttps_server_destroy
 - [ ] Check behaviour of TLS with HTTP keep-alive

@@ -32,6 +32,7 @@
 #define CLIENT_RANDOM_SIZE 32
 #define SERVER_RANDOM_SIZE 32
 #define MASTER_SECRET_SIZE 48
+#define VERIFY_DATA_SIZE 12
 
 // The maximum size for the key material is 128 bytes (TLS 1.2)
 // ref: https://tools.ietf.org/html/rfc5246#section-6.3
@@ -122,12 +123,17 @@ typedef struct {
 } client_key_exchange_message;
 
 typedef struct {
+	unsigned char verify_data[VERIFY_DATA_SIZE];
+} finished_message;
+
+typedef struct {
 	handshake_header hh;
 	union {
 		client_hello_message chm;
 		server_hello_message shm;
 		server_certificate_message scm;
 		client_key_exchange_message ckem;
+		finished_message fm;
 	} message;
 } handshake_packet;
 
