@@ -35,7 +35,7 @@ static void security_parameters_set_for_cipher_suite(cipher_suite_type cipher_su
 			sp->bulk_cipher_algorithm = BULK_CIPHER_ALGORITHM_AES;
 			sp->mac_algorithm = MAC_ALGORITHM_HMAC_SHA1;
 			sp->enc_key_length = 16;
-			sp->fixed_iv_length = 16;
+			sp->fixed_iv_length = 0;
 			sp->mac_key_length = 20;
 			sp->mac_length = 20;
 			sp->record_iv_length = 16;
@@ -46,7 +46,29 @@ static void security_parameters_set_for_cipher_suite(cipher_suite_type cipher_su
 			sp->bulk_cipher_algorithm = BULK_CIPHER_ALGORITHM_AES;
 			sp->mac_algorithm = MAC_ALGORITHM_HMAC_SHA256;
 			sp->enc_key_length = 16;
-			sp->fixed_iv_length = 16;
+			sp->fixed_iv_length = 0;
+			sp->mac_key_length = 32;
+			sp->mac_length = 32;
+			sp->record_iv_length = 16;
+			sp->block_length = 16;
+		} break;
+		case TLS_RSA_WITH_AES_256_CBC_SHA: {
+			sp->cipher = CIPHER_BLOCK;
+			sp->bulk_cipher_algorithm = BULK_CIPHER_ALGORITHM_AES;
+			sp->mac_algorithm = MAC_ALGORITHM_HMAC_SHA1;
+			sp->enc_key_length = 32;
+			sp->fixed_iv_length = 0;
+			sp->mac_key_length = 20;
+			sp->mac_length = 20;
+			sp->record_iv_length = 16;
+			sp->block_length = 16;
+		} break;
+		case TLS_RSA_WITH_AES_256_CBC_SHA256: {
+			sp->cipher = CIPHER_BLOCK;
+			sp->bulk_cipher_algorithm = BULK_CIPHER_ALGORITHM_AES;
+			sp->mac_algorithm = MAC_ALGORITHM_HMAC_SHA256;
+			sp->enc_key_length = 32;
+			sp->fixed_iv_length = 0;
 			sp->mac_key_length = 32;
 			sp->mac_length = 32;
 			sp->record_iv_length = 16;
@@ -205,7 +227,8 @@ static void verify_data_generate(const rawhttps_util_dynamic_buffer* all_handsha
 static int cipher_suite_choose(cipher_suite_type* chosen_cipher_suite, const unsigned short* client_cipher_suites,
 	unsigned short client_cipher_suites_length)
 {
-	unsigned short supported_cipher_suites[] = { TLS_RSA_WITH_AES_128_CBC_SHA256, TLS_RSA_WITH_AES_128_CBC_SHA };
+	unsigned short supported_cipher_suites[] = { TLS_RSA_WITH_AES_128_CBC_SHA256, TLS_RSA_WITH_AES_128_CBC_SHA,
+		TLS_RSA_WITH_AES_256_CBC_SHA256, TLS_RSA_WITH_AES_256_CBC_SHA };
 	for (int i = 0; i < sizeof(supported_cipher_suites) / sizeof(unsigned short); ++i)
 	{
 		cipher_suite_type current = supported_cipher_suites[i];

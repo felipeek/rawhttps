@@ -9,6 +9,7 @@
 #include <sys/socket.h>
 #include <errno.h>
 #include "crypto/aes_cbc.h"
+#include "crypto/aes256_cbc.h"
 #include "../util.h"
 #include "crypto/crypto_hashes.h"
 #include "crypto/hmac.h"
@@ -158,6 +159,8 @@ static int cipher_block_decrypt(const rawhttps_connection_state* client_cs, unsi
 			{
 				case 16: rawhttps_aes_128_cbc_decrypt(record_data_without_iv, client_cs->cipher_state.enc_key,
 					record_iv, block_count, result); break;
+				case 32: rawhttps_aes_256_cbc_decrypt(record_data_without_iv, client_cs->cipher_state.enc_key,
+					record_iv, result, block_count); break;
 				default: return -1;
 			}
 			unsigned char padding_length = result[record_data_without_iv_length - 1];
@@ -427,6 +430,8 @@ static int cipher_block_encrypt(rawhttps_connection_state* server_cs, unsigned c
 			{
 				case 16: rawhttps_aes_128_cbc_encrypt(generic_block_cipher, server_cs->cipher_state.enc_key, iv,
 					generic_block_cipher_size / server_cs->security_parameters.block_length, generic_block_cipher); break;
+				case 32: rawhttps_aes_256_cbc_encrypt(generic_block_cipher, server_cs->cipher_state.enc_key, iv,
+					generic_block_cipher, generic_block_cipher_size / server_cs->security_parameters.block_length); break;
 				default: return -1;
 			}
 			return 0;
