@@ -279,6 +279,17 @@ static int handshake_client_hello_get(rawhttps_tls_state* ts, int connected_sock
 		return -1;
 	}
 
+	// Check if TLS 1.2 is being used.
+	// @NOTE: We don't need to throw an error if a version greater than 1.2 is being used, because we can ask the client to use 1.2
+	// in the response. However, as of July/2019, the newest TLS version is 1.3, and in this version the 'ssl_version' field is also set to
+	// TLS12 (TLS 1.3 uses the "supported_versions" extension to negotiate the version and keeps ssl_version to 1.2). Thus, we can just always
+	// expect TLS12 here.
+	if (p.message.chm.ssl_version != TLS12)
+	{
+		rawhttps_logger_log_error("Client tried to use TLS version less than 1.2. rawhttps requires TLS 1.2");
+		return -1;
+	}
+
 	memcpy(ts->pending_security_parameters.client_random, p.message.chm.client_random, CLIENT_RANDOM_SIZE);
 	*client_cipher_suites = malloc(p.message.chm.cipher_suites_length * 2);
 	memcpy(*client_cipher_suites, p.message.chm.cipher_suites, p.message.chm.cipher_suites_length * 2);
