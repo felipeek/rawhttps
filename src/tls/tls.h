@@ -20,6 +20,7 @@ typedef struct
 int rawhttps_tls_state_create(rawhttps_tls_state* ts, const char* certificate_path, const char* private_key_path);
 void rawhttps_tls_state_destroy(rawhttps_tls_state* ts);
 int rawhttps_tls_handshake(rawhttps_tls_state* ts, int connected_socket);
+int rawhttps_tls_close(rawhttps_tls_state* ts, int connected_socket);
 long long rawhttps_tls_read(rawhttps_tls_state* ts, int connected_socket,
 	unsigned char data[RECORD_PROTOCOL_TLS_PLAIN_TEXT_FRAGMENT_MAX_SIZE]);
 long long rawhttps_tls_write(rawhttps_tls_state* ts, int connected_socket,

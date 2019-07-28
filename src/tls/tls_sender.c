@@ -174,3 +174,16 @@ int rawhttps_tls_sender_application_data_send(rawhttps_connection_state* server_
 
 	return 0;
 }
+
+// send to the client a new ALERT message
+int rawhttps_tls_sender_alert_send(rawhttps_connection_state* server_cs, int connected_socket, alert_level level, alert_description description)
+{
+	unsigned char data[2];
+	data[0] = level;
+	data[1] = description;
+
+	if (higher_layer_packet_send(server_cs, data, 2, ALERT_PROTOCOL, connected_socket))
+		return -1;
+
+	return 0;
+}

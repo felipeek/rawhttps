@@ -6,7 +6,7 @@
 - [ ] Crypto functions should use logger
 - [ ] Resolve leaks with crypto functions
 - [x] Implement ALERT protocol (receiver)
-- [ ] Implement ALERT protocol (sender) and send meaningful messages
+- [x] Implement ALERT protocol (sender) and send meaningful messages
 - [x] Check FINISHED's `verify_data`
 - [ ] Use scheduler instead of one thread per connection
 - [ ] Stop running threads in rawhttps_server_destroy

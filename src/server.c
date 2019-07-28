@@ -163,6 +163,8 @@ static void* rawhttps_server_new_connection_callback(void* arg)
 			"404 Error";
 		write(request.connected_socket, buf, sizeof(buf) - 1);
 	}
+	if (rawhttps_tls_close(&ts, connection->connected_socket))
+		rawhttps_logger_log_error("Error closing TLS connection");
 	rawhttps_header_destroy(&request.header);
 	rawhttps_http_parser_state_destroy(&hps);
 	rawhttps_tls_state_destroy(&ts);

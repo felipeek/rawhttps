@@ -480,9 +480,19 @@ int rawhttps_tls_handshake(rawhttps_tls_state* ts, int connected_socket)
 {
 	unsigned short* client_cipher_suites;
 	unsigned short client_cipher_suites_length;
+
+	// @NOTE/@TODO: For now, we are sending a generic HANDSHAKE_FAILURE alert when the handshake fails.
+	// In the future, we can refine the alert message and send the appropriate alert for each error
+	// However, we must be careful to not send more than one alert
+	// i.e. if we have a BAD RECORD, the record layer will return -1. If we send a BAD_RECORD alert there, we will eventually
+	// get an error here and we must somehow know that the alert was already sent to not send other unnecessary alert
+	// (or maybe we could send more than one?)
+
 	if (handshake_client_hello_get(ts, connected_socket, &client_cipher_suites, &client_cipher_suites_length))
 	{
 		rawhttps_logger_log_error("Error receiving CLIENT_HELLO message");
+		if (rawhttps_tls_sender_alert_send(&ts->server_connection_state, connected_socket, ALERT_LEVEL_FATAL, HANDSHAKE_FAILURE))
+			rawhttps_logger_log_error("Error sending FATAL alert");
 		return -1;
 	}
 
@@ -490,54 +500,72 @@ int rawhttps_tls_handshake(rawhttps_tls_state* ts, int connected_socket)
 	if (cipher_suite_choose(&chosen_cipher, client_cipher_suites, client_cipher_suites_length))
 	{
 		rawhttps_logger_log_error("Error selecting the cipher suite for TLS connection");
+		if (rawhttps_tls_sender_alert_send(&ts->server_connection_state, connected_socket, ALERT_LEVEL_FATAL, HANDSHAKE_FAILURE))
+			rawhttps_logger_log_error("Error sending FATAL alert");
 		return -1;
 	}
 	
 	if (handshake_server_hello_send(ts, connected_socket, chosen_cipher))
 	{
 		rawhttps_logger_log_error("Error sending SERVER_HELLO message");
+		if (rawhttps_tls_sender_alert_send(&ts->server_connection_state, connected_socket, ALERT_LEVEL_FATAL, HANDSHAKE_FAILURE))
+			rawhttps_logger_log_error("Error sending FATAL alert");
 		return -1;
 	}
 
 	if (handshake_certificate_send(ts, connected_socket))
 	{
 		rawhttps_logger_log_error("Error sending CERTIFICATE message");
+		if (rawhttps_tls_sender_alert_send(&ts->server_connection_state, connected_socket, ALERT_LEVEL_FATAL, HANDSHAKE_FAILURE))
+			rawhttps_logger_log_error("Error sending FATAL alert");
 		return -1;
 	}
-	
+
 	if (handshake_server_hello_done_send(ts, connected_socket))
 	{
 		rawhttps_logger_log_error("Error sending SERVER_HELLO_DONE message");
+		if (rawhttps_tls_sender_alert_send(&ts->server_connection_state, connected_socket, ALERT_LEVEL_FATAL, HANDSHAKE_FAILURE))
+			rawhttps_logger_log_error("Error sending FATAL alert");
 		return -1;
 	}
 
 	if (handshake_client_key_exchange_get(ts, connected_socket))
 	{
 		rawhttps_logger_log_error("Error receiving CLIENT_KEY_EXCHANGE message");
+		if (rawhttps_tls_sender_alert_send(&ts->server_connection_state, connected_socket, ALERT_LEVEL_FATAL, HANDSHAKE_FAILURE))
+			rawhttps_logger_log_error("Error sending FATAL alert");
 		return -1;
 	}
 	
 	if (handshake_change_cipher_spec_get(ts, connected_socket))
 	{
 		rawhttps_logger_log_error("Error receiving CHANGE_CIPHER_SPEC");
+		if (rawhttps_tls_sender_alert_send(&ts->server_connection_state, connected_socket, ALERT_LEVEL_FATAL, HANDSHAKE_FAILURE))
+			rawhttps_logger_log_error("Error sending FATAL alert");
 		return -1;
 	}
 
 	if (handshake_finished_get(ts, connected_socket))
 	{
 		rawhttps_logger_log_error("Error receiving FINISHED message");
+		if (rawhttps_tls_sender_alert_send(&ts->server_connection_state, connected_socket, ALERT_LEVEL_FATAL, HANDSHAKE_FAILURE))
+			rawhttps_logger_log_error("Error sending FATAL alert");
 		return -1;
 	}
 
 	if (handshake_change_cipher_spec_send(ts, connected_socket))
 	{
 		rawhttps_logger_log_error("Error sending CHANGE_CIPHER_SPEC message");
+		if (rawhttps_tls_sender_alert_send(&ts->server_connection_state, connected_socket, ALERT_LEVEL_FATAL, HANDSHAKE_FAILURE))
+			rawhttps_logger_log_error("Error sending FATAL alert");
 		return -1;
 	}
 	
 	if (handshake_finished_send(ts, connected_socket))
 	{
 		rawhttps_logger_log_error("Error sending FINISHED message");
+		if (rawhttps_tls_sender_alert_send(&ts->server_connection_state, connected_socket, ALERT_LEVEL_FATAL, HANDSHAKE_FAILURE))
+			rawhttps_logger_log_error("Error sending FATAL alert");
 		return -1;
 	}
 
@@ -545,6 +573,12 @@ int rawhttps_tls_handshake(rawhttps_tls_state* ts, int connected_socket)
 
 	free(client_cipher_suites);
 	return 0;
+}
+
+// closes the TLS connection
+int rawhttps_tls_close(rawhttps_tls_state* ts, int connected_socket)
+{
+	return rawhttps_tls_sender_alert_send(&ts->server_connection_state, connected_socket, ALERT_LEVEL_WARNING, CLOSE_NOTIFY);
 }
 
 long long rawhttps_tls_read(rawhttps_tls_state* ts, int connected_socket,

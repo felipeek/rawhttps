@@ -20,5 +20,6 @@ int rawhttps_tls_sender_change_cipher_spec_send(rawhttps_connection_state* serve
 // send to the client a new APPLICATION_DATA message
 int rawhttps_tls_sender_application_data_send(rawhttps_connection_state* server_cs, int connected_socket,
 	unsigned char* content, long long content_length);
+int rawhttps_tls_sender_alert_send(rawhttps_connection_state* server_cs, int connected_socket, alert_level level, alert_description description);
 
 #endif
