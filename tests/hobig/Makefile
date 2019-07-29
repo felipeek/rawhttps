@@ -2,7 +2,7 @@ SRC=../../src/tls/crypto
 BIN=../../bin/src/tls/crypto
 
 build: project
-	gcc -g -o hobig_test hobig_test.c -I../../include -I$(SRC) $(BIN)/hobig.o $(BIN)/random.o $(BIN)/arith.o
+	gcc -DDEBUG_MEMORY -g -o hobig_test hobig_test.c ../../src/tls/crypto/hobig.c -I../../include -I$(SRC) $(BIN)/random.o $(BIN)/arith.o
 
 run:
 	@./hobig_test

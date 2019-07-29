@@ -1,4 +1,6 @@
 #include <stdio.h>
+#define MEMDEBUG_IMPLEMENT
+#include "memdebug.h"
 #include "hobig.h"
 #include "../color.h"
 
@@ -40,6 +42,23 @@ void test_hobig_mod_div() {
     if(assert_equality_or_error(expected_result, res, __FUNCTION__) == 0) {
         printf("%sOK%s: %s\n", ColorGreen, ColorReset, __FUNCTION__);
     }
+
+    hobig_free(expected_result);
+    hobig_free(n);
+    hobig_free(exp);
+    hobig_free(m);
+    hobig_free(res);
+
+    Memdebug_Info meminfo = memdebug_get_global_info();
+    if(meminfo.current_memory_allocated == 0) {
+        printf("%sOK%s: %s leak check\n", ColorGreen, ColorReset, __FUNCTION__);
+    } else {
+        printf("%sERROR%s: %s leak check\n", ColorRed, ColorReset, __FUNCTION__);
+        memdebug_print_stats();
+        printf("\n");
+        memdebug_print_still_allocated();
+    }
+    memdebug_reset_stats();
 }
 
 /*
@@ -62,6 +81,9 @@ int run_test_hobig_div(rawhttps_ho_big_int_Test_Div tinstance) {
     err |= assert_equality_or_error(tinstance.expected_q, result.quotient, __FUNCTION__);
     err |= assert_equality_or_error(tinstance.expected_r, result.remainder, __FUNCTION__);
     
+    hobig_free(result.quotient);
+    hobig_free(result.remainder);
+
     return err;
 }
 
@@ -82,6 +104,21 @@ void test_hobig_div() {
     if(run_test_hobig_div(test) == 0) {
         printf("%sOK%s: %s\n", ColorGreen, ColorReset, __FUNCTION__);
     }
+    hobig_free(test.dividend);
+    hobig_free(test.divisor);
+    hobig_free(test.expected_q);
+    hobig_free(test.expected_r);
+
+    Memdebug_Info meminfo = memdebug_get_global_info();
+    if(meminfo.current_memory_allocated == 0) {
+        printf("%sOK%s: %s leak check\n", ColorGreen, ColorReset, __FUNCTION__);
+    } else {
+        printf("%sERROR%s: %s leak check\n", ColorRed, ColorReset, __FUNCTION__);
+        memdebug_print_stats();
+        printf("\n");
+        memdebug_print_still_allocated();
+    }
+    memdebug_reset_stats();
 }
 
 /*
@@ -98,7 +135,9 @@ typedef struct {
 
 int run_test_hobig_mul(rawhttps_ho_big_int_Test_Mul tinstance) {
     rawhttps_ho_big_int result = hobig_int_mul(&tinstance.a, &tinstance.b);
-    return assert_equality_or_error(tinstance.expected, result, __FUNCTION__);
+    int res = assert_equality_or_error(tinstance.expected, result, __FUNCTION__);
+    hobig_free(result);
+    return res;
 }
 
 rawhttps_ho_big_int_Test_Mul new_mul_test_instance(const char* expected, const char* a, const char* b) {
@@ -118,6 +157,20 @@ void test_hobig_mul() {
     if(run_test_hobig_mul(test) == 0) {
         printf("%sOK%s: %s\n", ColorGreen, ColorReset, __FUNCTION__);
     }
+    hobig_free(test.a);
+    hobig_free(test.b);
+    hobig_free(test.expected);
+
+    Memdebug_Info meminfo = memdebug_get_global_info();
+    if(meminfo.current_memory_allocated == 0) {
+        printf("%sOK%s: %s leak check\n", ColorGreen, ColorReset, __FUNCTION__);
+    } else {
+        printf("%sERROR%s: %s leak check\n", ColorRed, ColorReset, __FUNCTION__);
+        memdebug_print_stats();
+        printf("\n");
+        memdebug_print_still_allocated();
+    }
+    memdebug_reset_stats();
 }
 
 /*
@@ -154,6 +207,20 @@ void test_hobig_add() {
     if(run_test_hobig_add(test) == 0) {
         printf("%sOK%s: %s\n", ColorGreen, ColorReset, __FUNCTION__);
     }
+    hobig_free(test.a);
+    hobig_free(test.b);
+    hobig_free(test.expected);
+
+    Memdebug_Info meminfo = memdebug_get_global_info();
+    if(meminfo.current_memory_allocated == 0) {
+        printf("%sOK%s: %s leak check\n", ColorGreen, ColorReset, __FUNCTION__);
+    } else {
+        printf("%sERROR%s: %s leak check\n", ColorRed, ColorReset, __FUNCTION__);
+        memdebug_print_stats();
+        printf("\n");
+        memdebug_print_still_allocated();
+    }
+    memdebug_reset_stats();
 }
 
 /*
@@ -190,13 +257,31 @@ void test_hobig_sub() {
     if(run_test_hobig_sub(test) == 0) {
         printf("%sOK%s: %s\n", ColorGreen, ColorReset, __FUNCTION__);
     }
+    hobig_free(test.a);
+    hobig_free(test.b);
+    hobig_free(test.expected);
+
+    Memdebug_Info meminfo = memdebug_get_global_info();
+    if(meminfo.current_memory_allocated == 0) {
+        printf("%sOK%s: %s leak check\n", ColorGreen, ColorReset, __FUNCTION__);
+    } else {
+        printf("%sERROR%s: %s leak check\n", ColorRed, ColorReset, __FUNCTION__);
+        memdebug_print_stats();
+        printf("\n");
+        memdebug_print_still_allocated();
+    }
+    memdebug_reset_stats();
 }
 
 int main() {
+    memdebug_init();
+
     test_hobig_sub();
     test_hobig_add();
     test_hobig_mul();
     test_hobig_div();
     test_hobig_mod_div();
+
+    memdebug_destroy();
     return 0;
 }

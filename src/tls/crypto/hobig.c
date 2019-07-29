@@ -743,6 +743,7 @@ hobig_int_mod_div(rawhttps_ho_big_int* n, rawhttps_ho_big_int* exp, rawhttps_ho_
             
             rawhttps_ho_big_int_div_result r = hobig_int_div(&answer, m);
             hobig_free(r.quotient);
+            hobig_free(answer);
 			answer = r.remainder;
 		}
 
@@ -757,6 +758,9 @@ hobig_int_mod_div(rawhttps_ho_big_int* n, rawhttps_ho_big_int* exp, rawhttps_ho_
         hobig_free(base);
         base = bb.remainder;
 	}
+
+    hobig_free(base);
+    hobig_free(e);
 
     return answer;
 }
@@ -841,6 +845,7 @@ hobig_int_div_knuth(rawhttps_ho_big_int* u, rawhttps_ho_big_int* v) {
 	}
 
     hobig_free(qhatv);
+    hobig_free(v0);
 
     // normalize q
     hobig_int_normalize(&q);

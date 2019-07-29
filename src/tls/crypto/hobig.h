@@ -1,5 +1,9 @@
 #pragma once
 
+#if defined(DEBUG_MEMORY)
+#include <memdebug.h>
+#endif
+
 typedef struct {
     int                negative;
     unsigned long long int* value;    // dynamic light_array
