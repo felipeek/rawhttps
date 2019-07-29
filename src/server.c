@@ -33,12 +33,8 @@ typedef struct {
 	int connected_socket;
 } rawhttps_connection;
 
-int rawhttps_server_init(rawhttps_server* server, int port, const char* certificate_path, int certificate_path_length,
-	const char* private_key_path, int private_key_path_length)
+int rawhttps_server_init(rawhttps_server* server, int port, const char* certificate_path, const char* private_key_path)
 {
-	// PATH_MAX includes nul
-	if (private_key_path_length > PATH_MAX - 1) return -1;
-	if (certificate_path_length > PATH_MAX - 1) return -1;
 	if (rawhttps_handler_tree_create(&server->handlers, 16 /* change me */)) return -1;
 
 	server->sockfd = socket(AF_INET, SOCK_STREAM, 0);
@@ -74,10 +70,12 @@ int rawhttps_server_init(rawhttps_server* server, int port, const char* certific
 	server->port = port;
 	server->initialized = true;
 
-	strncpy(server->certificate_path, certificate_path, certificate_path_length);
-	strncpy(server->private_key_path, private_key_path, private_key_path_length);
-	server->certificate_path[certificate_path_length] = '\0';
-	server->private_key_path[private_key_path_length] = '\0';
+	int certificate_path_length = strlen(certificate_path);
+	int private_key_path_length = strlen(private_key_path);
+	server->certificate_path = malloc(certificate_path_length + 1);
+	server->private_key_path = malloc(private_key_path_length + 1);
+	strcpy(server->certificate_path, certificate_path);
+	strcpy(server->private_key_path, private_key_path);
 
 	return 0;
 }
@@ -90,6 +88,8 @@ int rawhttps_server_destroy(rawhttps_server* server)
 	// @TODO: This should be fixed asap. Then the log mutex can also be destroyed.
 	if (server->initialized)
 	{
+		free(server->certificate_path);
+		free(server->private_key_path);
 		shutdown(server->sockfd, SHUT_RDWR);
 		close(server->sockfd);
 		rawhttps_handler_tree_destroy(&server->handlers);
@@ -184,6 +184,10 @@ int rawhttps_server_listen(rawhttps_server* server)
 	}
 
 	struct sockaddr_in client_address;
+
+	//long number_of_processors = sysconf(_SC_NPROCESSORS_ONLN);
+	//if (number_of_processors == -1) number_of_processors = 1;
+	//rawhttps_logger_log_info("Processors available: %d", number_of_processors);
 
 	while (1)
 	{

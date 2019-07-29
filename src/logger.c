@@ -7,7 +7,7 @@
 #include <sys/syscall.h>
 #include "util.h"
 
-static rawhttps_log_level log_level = RAWHTTPS_LOG_LEVEL_ERROR;
+static rawhttps_log_level log_level = RAWHTTPS_LOG_LEVEL_DISABLED;
 static pthread_mutex_t log_mutex;
 
 static const char color_reset[]   = "\x1B[0m";
@@ -27,6 +27,8 @@ void rawhttps_logger_init(rawhttps_log_level level)
 
 static void logger_log_out(FILE* target, const char* level, const char* format, va_list argptr)
 {
+	if (log_level == RAWHTTPS_LOG_LEVEL_DISABLED) return;
+
 	pid_t pid = syscall(__NR_gettid);
     size_t needed = snprintf(NULL, 0, "[%s]\t[%d]\t%s\n", level, pid, format) + 1;
     char* buf = malloc(needed);
@@ -52,6 +54,9 @@ void rawhttps_logger_log(rawhttps_log_level log_level, const char* msg)
 		} break;
 		case RAWHTTPS_LOG_LEVEL_ERROR: {
 			rawhttps_logger_log_error(msg);
+		} break;
+		case RAWHTTPS_LOG_LEVEL_DISABLED: {
+			return;
 		} break;
 	}
 }
@@ -124,6 +129,8 @@ void rawhttps_logger_log_hex(rawhttps_log_level level, const char* msg, const un
 		} break;
 		case RAWHTTPS_LOG_LEVEL_ERROR: {
 			rawhttps_logger_log_error("%s: %.*s", msg, (int)log_db.size, log_db.buffer);
+		} break;
+		case RAWHTTPS_LOG_LEVEL_DISABLED: {
 		} break;
 	}
 	rawhttps_util_dynamic_buffer_free(&log_db);

@@ -3,10 +3,11 @@
 
 typedef enum
 {
-    RAWHTTPS_LOG_LEVEL_DEBUG = 0,
-    RAWHTTPS_LOG_LEVEL_INFO = 1,
-    RAWHTTPS_LOG_LEVEL_WARNING = 2,
-    RAWHTTPS_LOG_LEVEL_ERROR = 3
+    RAWHTTPS_LOG_LEVEL_DISABLED = 0,
+    RAWHTTPS_LOG_LEVEL_DEBUG = 1,
+    RAWHTTPS_LOG_LEVEL_INFO = 2,
+    RAWHTTPS_LOG_LEVEL_WARNING = 3,
+    RAWHTTPS_LOG_LEVEL_ERROR = 4,
 } rawhttps_log_level;
 
 void rawhttps_logger_init(rawhttps_log_level level);
