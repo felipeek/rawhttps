@@ -8,8 +8,8 @@ typedef struct {
 	int port;
 	int initialized;
 	rawhttps_handler_tree handlers;
-	char* certificate_path;
-	char* private_key_path;
+	rawhttps_rsa_certificate certificate;
+	rawhttps_private_key private_key;
 } rawhttps_server;
 
 int rawhttps_server_init(rawhttps_server* server, int port, const char* certificate_path, const char* private_key_path);

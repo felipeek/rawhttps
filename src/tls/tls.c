@@ -89,9 +89,8 @@ static void prf(const unsigned char* secret, int secret_length, const char* labe
 	rawhttps_prf12(rawhttps_sha256, 32, secret, secret_length, label, label_length, seed, seed_length, result, result_length);
 }
 
-int rawhttps_tls_state_create(rawhttps_tls_state* ts, const char* certificate_path, const char* private_key_path)
+int rawhttps_tls_state_create(rawhttps_tls_state* ts, rawhttps_rsa_certificate certificate, rawhttps_private_key private_key)
 {
-	int err = 0;
 	memset(ts, 0, sizeof(rawhttps_tls_state));
 	security_parameters_set_for_cipher_suite(TLS_NULL_WITH_NULL_NULL, &ts->client_connection_state.security_parameters);
 	security_parameters_set_for_cipher_suite(TLS_NULL_WITH_NULL_NULL, &ts->server_connection_state.security_parameters);
@@ -101,16 +100,8 @@ int rawhttps_tls_state_create(rawhttps_tls_state* ts, const char* certificate_pa
 		rawhttps_logger_log_error("Error creating TLS parser state");
 		return -1;
 	}
-	ts->certificate = asn1_parse_pem_certificate_from_file(certificate_path, 0);
-	if (err) {
-		rawhttps_logger_log_error("Error parsing PEM certificate from file (path: %s)", certificate_path);
-		return -1;
-	}
-	ts->private_key = asn1_parse_pem_private_certificate_key_from_file(private_key_path, &err);
-	if (err) {
-		rawhttps_logger_log_error("Error parsing PEM private key from file (path: %s)", private_key_path);
-		return -1;
-	}
+	ts->certificate = certificate;
+	ts->private_key = private_key;
 	return 0;
 }
 
@@ -140,6 +131,8 @@ static int pre_master_secret_decrypt(rawhttps_private_key* pk, unsigned char* re
 	}
 	assert(dd.length == 48);	// RSA!
 	memcpy(result, dd.data, 48);
+	hobig_free(encrypted_big_int);
+	free(dd.data);
 	return 0;
 }
 

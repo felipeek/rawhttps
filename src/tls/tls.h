@@ -17,7 +17,7 @@ typedef struct
 	rawhttps_private_key private_key;
 } rawhttps_tls_state;
 
-int rawhttps_tls_state_create(rawhttps_tls_state* ts, const char* certificate_path, const char* private_key_path);
+int rawhttps_tls_state_create(rawhttps_tls_state* ts, rawhttps_rsa_certificate certificate, rawhttps_private_key private_key);
 void rawhttps_tls_state_destroy(rawhttps_tls_state* ts);
 int rawhttps_tls_handshake(rawhttps_tls_state* ts, int connected_socket);
 int rawhttps_tls_close(rawhttps_tls_state* ts, int connected_socket);

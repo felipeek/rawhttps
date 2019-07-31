@@ -70,12 +70,18 @@ int rawhttps_server_init(rawhttps_server* server, int port, const char* certific
 	server->port = port;
 	server->initialized = true;
 
-	int certificate_path_length = strlen(certificate_path);
-	int private_key_path_length = strlen(private_key_path);
-	server->certificate_path = malloc(certificate_path_length + 1);
-	server->private_key_path = malloc(private_key_path_length + 1);
-	strcpy(server->certificate_path, certificate_path);
-	strcpy(server->private_key_path, private_key_path);
+	int err = 0;
+	server->certificate = asn1_parse_pem_certificate_from_file(certificate_path, 0);
+	if (err) {
+		rawhttps_logger_log_error("Error parsing PEM certificate from file (path: %s)", certificate_path);
+		return -1;
+	}
+	server->private_key = asn1_parse_pem_private_certificate_key_from_file(private_key_path, &err);
+	if (err) {
+		rawhttps_logger_log_error("Error parsing PEM private key from file (path: %s)", private_key_path);
+		asn1_pem_certificate_free(server->certificate);
+		return -1;
+	}
 
 	return 0;
 }
@@ -88,8 +94,8 @@ int rawhttps_server_destroy(rawhttps_server* server)
 	// @TODO: This should be fixed asap. Then the log mutex can also be destroyed.
 	if (server->initialized)
 	{
-		free(server->certificate_path);
-		free(server->private_key_path);
+		asn1_pem_certificate_free(server->certificate);
+		private_key_free(server->private_key);
 		shutdown(server->sockfd, SHUT_RDWR);
 		close(server->sockfd);
 		rawhttps_handler_tree_destroy(&server->handlers);
@@ -105,7 +111,7 @@ static void* rawhttps_server_new_connection_callback(void* arg)
 	rawhttps_logger_log_info("Connection established with client %s.", client_ip_ascii);
 
 	rawhttps_tls_state ts;
-	if (rawhttps_tls_state_create(&ts, connection->server->certificate_path, connection->server->private_key_path))
+	if (rawhttps_tls_state_create(&ts, connection->server->certificate, connection->server->private_key))
 	{
 		rawhttps_logger_log_error("Error creating tls state");
 		return NULL;
