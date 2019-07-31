@@ -183,6 +183,7 @@ int der_get_length(u8* data, int* error, int* advance) {
 
 static void
 der_free(DER_Node* der) {
+    if(!der) return;
     switch(der->kind) {
         case DER_SEQUENCE:{
             for(int i = 0; i < array_length(der->sequence.data); ++i) {
@@ -481,8 +482,8 @@ asn1_parse_pem_private(const u8* data, int length, int* error, int is_base64_enc
     }
 
     if(is_base64_encoded) { free(r.data); }
-    arena_free(arena);
     der_free(node);
+    arena_free(arena);
     return key;
 }
 
@@ -549,8 +550,8 @@ asn1_parse_pem_public(const u8* data, int length, int* error, int is_base64_enco
     pk.E = hobig_int_copy(values[1]->integer.i);
 
     free(r.data);
-    arena_free(arena);
     der_free(node);
+    arena_free(arena);
     return pk;
 }
 
@@ -1025,8 +1026,8 @@ asn1_parse_pem_private_certificate_key(const unsigned char* data, int length_byt
     key = asn1_parse_pem_private((const u8*)oct_str.data, oct_str.length, error, 0);
 
     free(r.data);
-    arena_free(arena);
     der_free(node);
+    arena_free(arena);
     return key;
 }
 
