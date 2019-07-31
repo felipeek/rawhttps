@@ -19,12 +19,12 @@ rawhttps_decrypt_data
 decrypt_pkcs1_v1_5(rawhttps_private_key pk, rawhttps_ho_big_int encrypted, int* error) {
     rawhttps_ho_big_int decr = hobig_int_mod_div(&encrypted, &pk.PrivateExponent, &pk.public.N);
     // TODO(psv): fix this to the correct limit
-   // if(array_length(decr.value) % 32 != 0) {
-   //     // error, encrypted message does not contain 2048 bits
-   //     fprintf(stderr, "Encrypted message must contain 2048 or 4096 bits (length = %d)\n", array_length(decr.value));
-   //     if(error) *error |= 1;
-   //     return (rawhttps_decrypt_data){0};
-   // }
+    // if(array_length(decr.value) % 32 != 0) {
+    //     // error, encrypted message does not contain 2048 bits
+    //     fprintf(stderr, "Encrypted message must contain 2048 or 4096 bits (length = %d)\n", array_length(decr.value));
+    //     if(error) *error |= 1;
+    //     return (rawhttps_decrypt_data){0};
+    // }
 
     if(((decr.value[array_length(decr.value) - 1] & 0xffff000000000000) >> 48) != 0x0002) {
         // format invalid, but do not accuse error to not be
@@ -68,10 +68,11 @@ end_loop:
 rawhttps_ho_big_int
 encrypt_pkcs1_v1_5(rawhttps_public_key pk, const char* in, int length_bytes) {
     unsigned char out[256];
-    // TODO(psv): revise this
 
-    // Cannot encrypt something bigger than 128 bits or 16 bytes
-    if(length_bytes > 32) return (rawhttps_ho_big_int){0};
+    if(length_bytes > (array_length(pk.N.value) * sizeof(u64) - 11)) {
+        // Message too long
+        return (rawhttps_ho_big_int){0};
+    }
 
     // Always mode 2, meaning encryption
     // First 16 bits are 0x0002 for mode 2
@@ -88,8 +89,9 @@ encrypt_pkcs1_v1_5(rawhttps_public_key pk, const char* in, int length_bytes) {
     memcpy(out+padding_byte_count + 3, in, length_bytes);
 
     rawhttps_ho_big_int rsa_plain_text = hobig_int_new_from_memory(out, 256);
-
     rawhttps_ho_big_int encrypted = hobig_int_mod_div(&rsa_plain_text, &pk.E, &pk.N);
+
+    hobig_free(rsa_plain_text);
 
     return encrypted;
 }
