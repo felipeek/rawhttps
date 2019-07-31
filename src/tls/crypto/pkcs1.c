@@ -18,6 +18,7 @@ extern u64 random_integer(u64 min, u64 max);
 rawhttps_decrypt_data
 decrypt_pkcs1_v1_5(rawhttps_private_key pk, rawhttps_ho_big_int encrypted, int* error) {
     rawhttps_ho_big_int decr = hobig_int_mod_div(&encrypted, &pk.PrivateExponent, &pk.public.N);
+    // TODO(psv): fix this to the correct limit
    // if(array_length(decr.value) % 32 != 0) {
    //     // error, encrypted message does not contain 2048 bits
    //     fprintf(stderr, "Encrypted message must contain 2048 or 4096 bits (length = %d)\n", array_length(decr.value));
@@ -58,6 +59,8 @@ end_loop:
         char b = ((char*)decr.value)[i];
         result.data[index - i - 1] = b;
     }
+
+    hobig_free(decr);
     
     return result;
 }
@@ -65,6 +68,7 @@ end_loop:
 rawhttps_ho_big_int
 encrypt_pkcs1_v1_5(rawhttps_public_key pk, const char* in, int length_bytes) {
     unsigned char out[256];
+    // TODO(psv): revise this
 
     // Cannot encrypt something bigger than 128 bits or 16 bytes
     if(length_bytes > 32) return (rawhttps_ho_big_int){0};
@@ -86,9 +90,6 @@ encrypt_pkcs1_v1_5(rawhttps_public_key pk, const char* in, int length_bytes) {
     rawhttps_ho_big_int rsa_plain_text = hobig_int_new_from_memory(out, 256);
 
     rawhttps_ho_big_int encrypted = hobig_int_mod_div(&rsa_plain_text, &pk.E, &pk.N);
-
-    hobig_int_print(encrypted);
-    printf("\n");
 
     return encrypted;
 }
