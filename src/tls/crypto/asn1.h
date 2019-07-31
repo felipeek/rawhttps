@@ -58,6 +58,8 @@ typedef struct {
     rawhttps_cert_metadata       organization;
     rawhttps_cert_metadata       email;
 	rawhttps_base64_data         raw;
+    void* raw_der;
+    void* arena;
 } rawhttps_rsa_certificate;
 
 rawhttps_public_key       asn1_parse_public_key_from_file(const char* filename, int* error);
@@ -65,6 +67,8 @@ rawhttps_public_key       asn1_parse_pem_public_key_from_file(const char* filena
 rawhttps_private_key      asn1_parse_pem_private_key_from_file(const char* filename, int* error);
 rawhttps_private_key      asn1_parse_pem_private_certificate_key_from_file(const char* filename, int* error);
 rawhttps_rsa_certificate asn1_parse_pem_certificate_from_file(const char* filename, int* error);
+
+void asn1_pem_certificate_free(rawhttps_rsa_certificate certificate);
 
 // RSA Certificate in the PEM format
 rawhttps_rsa_certificate asn1_parse_pem_certificate(const unsigned char* data, int length, int* error, int is_base64_encoded);

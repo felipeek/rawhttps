@@ -181,6 +181,39 @@ int der_get_length(u8* data, int* error, int* advance) {
     return length;
 }
 
+static void
+der_free(DER_Node* der) {
+    switch(der->kind) {
+        case DER_SEQUENCE:{
+            for(int i = 0; i < array_length(der->sequence.data); ++i) {
+                der_free(der->sequence.data[i]);
+            }
+            array_free(der->sequence.data);
+        } break;
+        case DER_BIT_STRING:{
+            der_free(der->bit_string.data);
+        } break;
+        case DER_SET:{
+            der_free(der->set.data);
+        } break;
+        
+        case DER_INTEGER: {
+            hobig_free(der->integer.i);
+        } break;
+
+        case DER_BMP_STRING:
+        case DER_BOOLEAN:
+        case DER_CONSTRUCTED_SEQ:
+        case DER_IA5_STRING:
+        case DER_OBJECT_ID:
+        case DER_OCT_STRING:
+        case DER_PRINTABLE_STRING:
+        case DER_UTC_TIME:
+        case DER_UTF8_STRING:
+        default: break;
+    }
+}
+
 DER_Node*
 parse_der(Light_Arena* arena, u8* data, int total_length, int* error) {
     u8* at = data;
@@ -372,6 +405,9 @@ private_key_free(rawhttps_private_key p) {
     hobig_free(p.PrivateExponent);
     hobig_free(p.P);
     hobig_free(p.Q);
+    hobig_free(p.DP);
+    hobig_free(p.DQ);
+    hobig_free(p.QINV);
 }
 
 // Parses a PEM file of a private key.
@@ -424,27 +460,29 @@ asn1_parse_pem_private(const u8* data, int length, int* error, int is_base64_enc
     }
 
     // Public modulus
-    key.public.N = seq[1]->integer.i;
-    key.public.E = seq[2]->integer.i;
-    key.PrivateExponent = seq[3]->integer.i;
-    key.P = seq[4]->integer.i;
-    key.Q = seq[5]->integer.i;
+    
+    key.public.N = hobig_int_copy(seq[1]->integer.i);
+    key.public.E = hobig_int_copy(seq[2]->integer.i);
+    key.PrivateExponent = hobig_int_copy(seq[3]->integer.i);
+    key.P = hobig_int_copy(seq[4]->integer.i);
+    key.Q = hobig_int_copy(seq[5]->integer.i);
     
     if(array_length(seq) == 9) {
         // We have DP, DQ and QINV
         if(seq[6]->kind == DER_INTEGER) {
-            key.DP = seq[6]->integer.i;
+            key.DP = hobig_int_copy(seq[6]->integer.i);
         }
         if(seq[7]->kind == DER_INTEGER) {
-            key.DQ = seq[7]->integer.i;
+            key.DQ = hobig_int_copy(seq[7]->integer.i);
         }
         if (seq[8]->kind == DER_INTEGER) {
-            key.QINV = seq[8]->integer.i;
+            key.QINV = hobig_int_copy(seq[8]->integer.i);
         }
     }
 
     if(is_base64_encoded) { free(r.data); }
     arena_free(arena);
+    der_free(node);
     return key;
 }
 
@@ -507,11 +545,12 @@ asn1_parse_pem_public(const u8* data, int length, int* error, int is_base64_enco
     if(array_length(values) < 2 || values[0]->kind != DER_INTEGER || values[1]->kind != DER_INTEGER) {
         FATAL_PEM_PUBLIC("Invalid format, could not find modulus and exponent in bit string\n");
     }
-    pk.N = values[0]->integer.i;
-    pk.E = values[1]->integer.i;
+    pk.N = hobig_int_copy(values[0]->integer.i);
+    pk.E = hobig_int_copy(values[1]->integer.i);
 
     free(r.data);
     arena_free(arena);
+    der_free(node);
     return pk;
 }
 
@@ -682,6 +721,13 @@ metadata_from_object_id(rawhttps_rsa_certificate* certificate, DER_Object_ID oid
     }
 }
 
+void
+asn1_pem_certificate_free(rawhttps_rsa_certificate certificate) {
+    der_free(certificate.raw_der);
+    arena_free((Light_Arena*)certificate.arena);
+    free(certificate.raw.data);
+}
+
 rawhttps_rsa_certificate
 asn1_parse_pem_certificate(const u8* data, int length, int* error, int is_base64_encoded) {
     rawhttps_base64_data r = {0};
@@ -703,6 +749,8 @@ asn1_parse_pem_certificate(const u8* data, int length, int* error, int is_base64
 
     rawhttps_rsa_certificate certificate = {0};
 	certificate.raw = r;
+    certificate.raw_der = node;
+    certificate.arena = (void*)arena;
 
     DER_Node* at = node;
     if(node->kind != DER_SEQUENCE) {
@@ -864,6 +912,8 @@ asn1_parse_pem_header_and_footer(
         }
     }
 
+    free(memory);
+
     if(out_length) *out_length += trimmed_length;
     return d;
 }
@@ -976,6 +1026,7 @@ asn1_parse_pem_private_certificate_key(const unsigned char* data, int length_byt
 
     free(r.data);
     arena_free(arena);
+    der_free(node);
     return key;
 }
 
@@ -995,7 +1046,9 @@ asn1_parse_pem_private_certificate_key_from_file(const char* filename, int* erro
         return (rawhttps_private_key){0};
     }
 
-    return asn1_parse_pem_private_certificate_key(data, length_bytes, error, 1);
+    rawhttps_private_key result = asn1_parse_pem_private_certificate_key(data, length_bytes, error, 1);
+    free((void*)data);
+    return result;
 }
 
 rawhttps_rsa_certificate
@@ -1014,7 +1067,9 @@ asn1_parse_pem_certificate_from_file(const char* filename, int* error) {
         return (rawhttps_rsa_certificate){0};
     }
 
-    return asn1_parse_pem_certificate(data, length_bytes, error, 1);
+    rawhttps_rsa_certificate result = asn1_parse_pem_certificate(data, length_bytes, error, 1);
+    free((void*)data);
+    return result;
 }
 
 rawhttps_private_key
@@ -1033,7 +1088,9 @@ asn1_parse_pem_private_key_from_file(const char* filename, int* error) {
         return (rawhttps_private_key){0};
     }
 
-    return asn1_parse_pem_private(data, length_bytes, error, 1);
+    rawhttps_private_key result = asn1_parse_pem_private(data, length_bytes, error, 1);
+    free((void*)data);
+    return result;
 }
 
 rawhttps_public_key
@@ -1052,5 +1109,7 @@ asn1_parse_pem_public_key_from_file(const char* filename, int* error) {
         return (rawhttps_public_key){0};
     }
 
-    return asn1_parse_pem_public(data, length_bytes, error, 1);
+    rawhttps_public_key result = asn1_parse_pem_public(data, length_bytes, error, 1);
+    free((void*)data);
+    return result;
 }
