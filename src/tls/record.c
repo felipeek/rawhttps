@@ -123,6 +123,53 @@ static int record_get_next_bytes(rawhttps_record_buffer* record_buffer, long lon
 	return 0;
 }
 
+static int mac(const rawhttps_connection_state* server_cs, const unsigned char* mac_message, int mac_message_length, unsigned char* result)
+{
+	switch(server_cs->security_parameters.mac_algorithm)
+	{
+		case MAC_ALGORITHM_HMAC_SHA1: {
+			rawhttps_hmac(rawhttps_sha1, server_cs->mac_key, server_cs->security_parameters.mac_length, mac_message, mac_message_length, result,
+				server_cs->security_parameters.mac_length);
+			return 0;
+		} break;
+		case MAC_ALGORITHM_HMAC_SHA256: {
+			rawhttps_hmac(rawhttps_sha256, server_cs->mac_key, server_cs->security_parameters.mac_length, mac_message, mac_message_length, result,
+				server_cs->security_parameters.mac_length);
+			return 0;
+		} break;
+		case MAC_ALGORITHM_NULL:
+		case MAC_ALGORITHM_HMAC_MD5:
+		case MAC_ALGORITHM_HMAC_SHA384:
+		case MAC_ALGORITHM_HMAC_SHA512: {
+			rawhttps_logger_log_error("Error calculating MAC: mac algorithm not supported");
+			return -1;
+		} break;
+	}
+
+	rawhttps_logger_log_error("Error calculating MAC: mac algorithm not supported");
+	return -1;
+}
+
+static int build_mac_message(rawhttps_connection_state* cs, const unsigned char* fragment, int fragment_length, protocol_type type,
+	unsigned char* result)
+{
+	unsigned long long seq_number_be = BIG_ENDIAN_64(cs->sequence_number);
+	unsigned char mac_tls_type = type;
+	unsigned short mac_tls_version = BIG_ENDIAN_16(TLS12);
+	unsigned short mac_tls_length = BIG_ENDIAN_16(fragment_length);
+	int mac_message_length = sizeof(seq_number_be) + sizeof(mac_tls_type) + sizeof(mac_tls_version) + sizeof(mac_tls_length) + fragment_length;
+	unsigned char* mac_message = calloc(1, mac_message_length);
+	*(unsigned long long*)(mac_message + 0) = seq_number_be;
+	*(unsigned char*)(mac_message + 8) = mac_tls_type;
+	*(unsigned short*)(mac_message + 9) = mac_tls_version;
+	*(unsigned short*)(mac_message + 11) = mac_tls_length;
+	memcpy(mac_message + 13, fragment, fragment_length);
+	int r = mac(cs, mac_message, mac_message_length, result);
+	free(mac_message);
+	++cs->sequence_number;
+	return r;
+}
+
 static int cipher_stream_decrypt(const rawhttps_connection_state* client_cs, unsigned char* record_data,
 	unsigned short record_data_length, unsigned char result[RECORD_PROTOCOL_TLS_PLAIN_TEXT_FRAGMENT_MAX_SIZE])
 {
@@ -144,16 +191,18 @@ static int cipher_stream_decrypt(const rawhttps_connection_state* client_cs, uns
 	return -1;
 }
 
-static int cipher_block_decrypt(const rawhttps_connection_state* client_cs, unsigned char* record_data,
-	unsigned short record_data_length, unsigned char result[RECORD_PROTOCOL_TLS_PLAIN_TEXT_FRAGMENT_MAX_SIZE])
+static int cipher_block_decrypt(rawhttps_connection_state* client_cs, unsigned char* record_data,
+	unsigned short record_data_length, unsigned char result[RECORD_PROTOCOL_TLS_PLAIN_TEXT_FRAGMENT_MAX_SIZE], protocol_type type)
 {
-	switch(client_cs->security_parameters.bulk_cipher_algorithm)
+	// Parts of the encrypted block
+	unsigned char* record_iv = record_data;
+	unsigned char record_iv_length = client_cs->security_parameters.record_iv_length;
+	unsigned char* record_data_without_iv = record_data + record_iv_length;
+	unsigned short record_data_without_iv_length = record_data_length - (unsigned char)record_iv_length;
+
+	switch (client_cs->security_parameters.bulk_cipher_algorithm)
 	{
 		case BULK_CIPHER_ALGORITHM_AES: {
-			unsigned char record_iv_length = client_cs->security_parameters.record_iv_length;
-			unsigned short record_data_without_iv_length = record_data_length - (unsigned char)record_iv_length;
-			unsigned char* record_iv = record_data;
-			unsigned char* record_data_without_iv = record_data + record_iv_length;
 			int block_count = (int)record_data_without_iv_length / client_cs->security_parameters.block_length;
 			switch (client_cs->security_parameters.enc_key_length)
 			{
@@ -163,8 +212,6 @@ static int cipher_block_decrypt(const rawhttps_connection_state* client_cs, unsi
 					record_iv, result, block_count); break;
 				default: return -1;
 			}
-			unsigned char padding_length = result[record_data_without_iv_length - 1];
-			return record_data_without_iv_length - client_cs->security_parameters.mac_length - padding_length - 1;
 		} break;
 		case BULK_CIPHER_ALGORITHM_NULL:
 		case BULK_CIPHER_ALGORITHM_DES:
@@ -172,14 +219,35 @@ static int cipher_block_decrypt(const rawhttps_connection_state* client_cs, unsi
 			rawhttps_logger_log_error("Error decrypting cipher block: bulk cipher algorithm not supported");
 			return -1;
 		} break;
+		default: {
+			rawhttps_logger_log_error("Error decrypting cipher block: bulk cipher algorithm not supported");
+			return -1;
+		} break;
 	}
 	
-	rawhttps_logger_log_error("Error decrypting cipher block: bulk cipher algorithm not supported");
-	return -1;
+	// Parts of the already decrypted block
+	int padding_length_position = record_data_without_iv_length - 1;
+	unsigned char padding_length = result[record_data_without_iv_length - 1];
+	int padding_position = padding_length_position - padding_length;
+	int mac_position = padding_position - client_cs->security_parameters.mac_length;
+	int content_position = 0;
+	unsigned char* mac = &result[mac_position];
+	unsigned char* content = &result[content_position];
+	int content_length = mac_position;
+
+	// Re-calculate mac to check integrity
+	unsigned char calculated_mac[CIPHER_MAC_MAX_LENGTH];
+	build_mac_message(client_cs, content, content_length, type, calculated_mac);
+	if (memcmp(mac, calculated_mac, client_cs->security_parameters.mac_length))
+	{
+		rawhttps_logger_log_error("Client sent an incorrect MAC");
+		return -1;
+	}
+	return content_length;
 }
 
-static int record_data_decrypt(const rawhttps_connection_state* client_cs, unsigned char* record_data,
-	unsigned short record_data_length, unsigned char result[RECORD_PROTOCOL_TLS_PLAIN_TEXT_FRAGMENT_MAX_SIZE])
+static int record_data_decrypt(rawhttps_connection_state* client_cs, unsigned char* record_data,
+	unsigned short record_data_length, unsigned char result[RECORD_PROTOCOL_TLS_PLAIN_TEXT_FRAGMENT_MAX_SIZE], protocol_type type)
 {
 	// @TODO: We need to check the MAC here!
 	switch (client_cs->security_parameters.cipher)
@@ -188,7 +256,7 @@ static int record_data_decrypt(const rawhttps_connection_state* client_cs, unsig
 			return cipher_stream_decrypt(client_cs, record_data, record_data_length, result);
 		} break;
 		case CIPHER_BLOCK: {
-			return cipher_block_decrypt(client_cs, record_data, record_data_length, result);
+			return cipher_block_decrypt(client_cs, record_data, record_data_length, result, type);
 		} break;
 		case CIPHER_AEAD: {
 			rawhttps_logger_log_error("Error decrypting record data: cipher type not supported");
@@ -324,11 +392,9 @@ long long rawhttps_record_get(rawhttps_record_buffer* record_buffer, int connect
 		return -1;
 	}
 
-	long long decrypted_record_data_length = record_data_decrypt(client_cs, ptr, record_length, data);
+	long long decrypted_record_data_length = record_data_decrypt(client_cs, ptr, record_length, data, *type);
 	assert(decrypted_record_data_length <= RECORD_PROTOCOL_TLS_PLAIN_TEXT_FRAGMENT_MAX_SIZE);
 	rawhttps_record_buffer_clear(record_buffer);
-
-	++client_cs->sequence_number;
 
 	// Test for alerts or whether the record packet has some error
 	switch (*type)
@@ -476,53 +542,7 @@ static void generate_random_iv(unsigned char iv_length, unsigned char* iv)
 		iv[i] = i;
 }
 
-static int mac(const rawhttps_connection_state* server_cs, const unsigned char* mac_message, int mac_message_length, unsigned char* result)
-{
-	switch(server_cs->security_parameters.mac_algorithm)
-	{
-		case MAC_ALGORITHM_HMAC_SHA1: {
-			rawhttps_hmac(rawhttps_sha1, server_cs->mac_key, server_cs->security_parameters.mac_length, mac_message, mac_message_length, result,
-				server_cs->security_parameters.mac_length);
-			return 0;
-		} break;
-		case MAC_ALGORITHM_HMAC_SHA256: {
-			rawhttps_hmac(rawhttps_sha256, server_cs->mac_key, server_cs->security_parameters.mac_length, mac_message, mac_message_length, result,
-				server_cs->security_parameters.mac_length);
-			return 0;
-		} break;
-		case MAC_ALGORITHM_NULL:
-		case MAC_ALGORITHM_HMAC_MD5:
-		case MAC_ALGORITHM_HMAC_SHA384:
-		case MAC_ALGORITHM_HMAC_SHA512: {
-			rawhttps_logger_log_error("Error calculating MAC: mac algorithm not supported");
-			return -1;
-		} break;
-	}
-
-	rawhttps_logger_log_error("Error calculating MAC: mac algorithm not supported");
-	return -1;
-}
-
-static int build_mac_message(const rawhttps_connection_state* server_cs, const unsigned char* fragment, int fragment_length, protocol_type type,
-	unsigned char* result)
-{
-	unsigned long long seq_number_be = BIG_ENDIAN_64(server_cs->sequence_number);
-	unsigned char mac_tls_type = type;
-	unsigned short mac_tls_version = BIG_ENDIAN_16(TLS12);
-	unsigned short mac_tls_length = BIG_ENDIAN_16(fragment_length);
-	int mac_message_length = sizeof(seq_number_be) + sizeof(mac_tls_type) + sizeof(mac_tls_version) + sizeof(mac_tls_length) + fragment_length;
-	unsigned char* mac_message = calloc(1, mac_message_length);
-	*(unsigned long long*)(mac_message + 0) = seq_number_be;
-	*(unsigned char*)(mac_message + 8) = mac_tls_type;
-	*(unsigned short*)(mac_message + 9) = mac_tls_version;
-	*(unsigned short*)(mac_message + 11) = mac_tls_length;
-	memcpy(mac_message + 13, fragment, fragment_length);
-	int r = mac(server_cs, mac_message, mac_message_length, result);
-	free(mac_message);
-	return r;
-}
-
-static int build_tls_cipher_text(const rawhttps_connection_state* server_cs, const unsigned char* fragment, int fragment_length,
+static int build_tls_cipher_text(rawhttps_connection_state* server_cs, const unsigned char* fragment, int fragment_length,
 	protocol_type type, unsigned char cipher_text[RECORD_PROTOCOL_TLS_CIPHER_TEXT_MAX_SIZE])
 {
 	switch (server_cs->security_parameters.cipher)
@@ -605,8 +625,6 @@ int rawhttps_record_send(rawhttps_connection_state* server_cs, const unsigned ch
 		rawhttps_logger_log_error("Error sending TLS cipher text");
 		return -1;
 	}
-
-	++server_cs->sequence_number;
 
 	return 0;
 }
