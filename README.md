@@ -132,9 +132,6 @@ $ ./example ./certificate.pem ./key.pem
 ```
 
 ## To do
-- [ ] Implement server_hello_random_number_generate
-- [ ] Implement generate_random_iv
-- [ ] Check MAC of received packets
 - [ ] Modify code to support HTTP keep-alive
 - [ ] Implement session-id
 - [ ] Implement compression methods

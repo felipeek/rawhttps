@@ -11,13 +11,12 @@ typedef long long int s64;
 #include <assert.h>
 #include "light_array.h"
 #include "table.h"
+#include "random.h"
 
 extern u64 div_word(u64 dividend_high, u64 dividend_low, u64 divisor, u64* out_remainder);
 extern u64 mul_word(u64 val1, u64 val2, u64* higher);
 extern u64 add_u64(u64 x, u64 y, u64 carry, u64* result);
 extern u64 sub_u64(u64 x, u64 y, u64 carry, u64* result);
-extern u64 random_integer(u64 min, u64 max);
-extern u64 random_64bit_integer();
 
 #if defined(__linux__)
 #include <time.h>

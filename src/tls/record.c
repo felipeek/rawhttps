@@ -15,6 +15,7 @@
 #include "crypto/hmac.h"
 #include "protocol.h"
 #include "../logger.h"
+#include "crypto/random.h"
 
 #define RECORD_PARSER_CHUNK_SIZE 1024
 #define RECORD_BUFFER_INITIAL_SIZE 1024
@@ -539,7 +540,10 @@ static int encrypt_tls_cipher_text_fragment(rawhttps_connection_state* server_cs
 static void generate_random_iv(unsigned char iv_length, unsigned char* iv)
 {
 	for (int i = 0; i < iv_length; ++i)
-		iv[i] = i;
+	{
+		unsigned long long r = random_64bit_integer();
+		iv[i] = (unsigned char)(r & 0xFF);
+	}
 }
 
 static int build_tls_cipher_text(rawhttps_connection_state* server_cs, const unsigned char* fragment, int fragment_length,

@@ -5,6 +5,7 @@
 #include <pthread.h>
 #include <sys/types.h>
 #include <sys/syscall.h>
+#include <unistd.h>
 #include "util.h"
 
 static rawhttps_log_level log_level = RAWHTTPS_LOG_LEVEL_DISABLED;
@@ -12,10 +13,7 @@ static pthread_mutex_t log_mutex;
 
 static const char color_reset[]   = "\x1B[0m";
 static const char color_red[]     = "\x1B[31m";
-static const char color_green[]   = "\x1B[32m";
 static const char color_yellow[]  = "\x1B[33m";
-static const char color_blue[]    = "\x1B[34m";
-static const char color_magenta[] = "\x1B[35m";
 static const char color_cyan[]    = "\x1B[36m";
 static const char color_white[]   = "\x1B[37m";
 

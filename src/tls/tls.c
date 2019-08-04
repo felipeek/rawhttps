@@ -12,6 +12,8 @@
 #include "tls_sender.h"
 #include "crypto/hmac.h"
 #include "../logger.h"
+#include "crypto/random.h"
+#include "time.h"
 
 #define PRE_MASTER_SECRET_SIZE 48
 
@@ -115,9 +117,12 @@ void rawhttps_tls_state_destroy(rawhttps_tls_state* ts)
 // @TODO: this function must be implemented correctly
 static void server_hello_random_number_generate(unsigned char server_random[32])
 {
-	// todo: this should be a random number and the four first bytes must be unix time
-	for (int i = 0; i < 32; ++i)
-		server_random[i] = i;
+	*(int*)server_random = BIG_ENDIAN_32((unsigned int)time(NULL));
+	for (int i = 4; i < 32; ++i)
+	{
+		unsigned long long r = random_64bit_integer();
+		server_random[i] = (unsigned char)(r & 0xFF);
+	}
 }
 
 static int pre_master_secret_decrypt(rawhttps_private_key* pk, unsigned char* result, unsigned char* encrypted, int length)
