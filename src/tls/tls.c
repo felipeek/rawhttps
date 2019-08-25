@@ -134,11 +134,13 @@ static int pre_master_secret_decrypt(rawhttps_private_key* pk, unsigned char* re
 		rawhttps_logger_log_error("Error decrypting premaster secret");
 		return -1;
 	}
+	// To avoid the ROBOT attack, we don't stop when dd.length != 48
+	// We proceed even though the premaster secret is incorrect
 	if (dd.length != 48) {
 		rawhttps_logger_log_error("Error decrypting premaster secret: got size %d instead of 48", dd.length);
-		return -1;
+	} else {
+		memcpy(result, dd.data, 48);
 	}
-	memcpy(result, dd.data, 48);
 	hobig_free(encrypted_big_int);
 	free(dd.data);
 	return 0;
