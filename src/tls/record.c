@@ -250,7 +250,7 @@ static int cipher_block_decrypt(rawhttps_connection_state* client_cs, unsigned c
 		return -1;
 	}
 	for (int i = padding_position; i < record_data_without_iv_length; ++i) {
-		if (result[i] == padding_length + 1) {
+		if (result[i] != padding_length) {
 			rawhttps_logger_log_error("Error decrypting cipher block: Malformed padding");
 			return -1;
 		}
