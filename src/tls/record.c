@@ -236,6 +236,14 @@ static int cipher_block_decrypt(rawhttps_connection_state* client_cs, unsigned c
 	unsigned char* content = &result[content_position];
 	int content_length = mac_position;
 
+	rawhttps_logger_log_info("RECORD_DATA_LENGTH = %d", record_data_length);
+	rawhttps_logger_log_info("PADDING_LENGTH_POSITION = %d", padding_length_position);
+	rawhttps_logger_log_info("PADDING_LENGTH = %u", padding_length);
+	rawhttps_logger_log_info("PADDING_POSITION = %d", padding_position);
+	rawhttps_logger_log_info("MAC_POSITION = %d", mac_position);
+	rawhttps_logger_log_info("CONTENT_LENGTH = %d", content_length);
+	rawhttps_logger_log_info("SECPARAMETERS.MAC_LENGTH = %u", client_cs->security_parameters.mac_length);
+
 	// Re-calculate mac to check integrity
 	unsigned char calculated_mac[CIPHER_MAC_MAX_LENGTH];
 	build_mac_message(client_cs, content, content_length, type, calculated_mac);
