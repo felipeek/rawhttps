@@ -201,10 +201,21 @@ static int cipher_block_decrypt(rawhttps_connection_state* client_cs, unsigned c
 	unsigned char* record_data_without_iv = record_data + record_iv_length;
 	unsigned short record_data_without_iv_length = record_data_length - (unsigned char)record_iv_length;
 
+	if (record_data_without_iv_length < 0) {
+		rawhttps_logger_log_error("Error decrypting cipher block: Record data without IV is negative.");
+		return -1;
+	}
+
 	switch (client_cs->security_parameters.bulk_cipher_algorithm)
 	{
 		case BULK_CIPHER_ALGORITHM_AES: {
 			int block_count = (int)record_data_without_iv_length / client_cs->security_parameters.block_length;
+
+			if (block_count == 0 || (int)record_data_without_iv_length % client_cs->security_parameters.block_length != 0) {
+				rawhttps_logger_log_error("Error decrypting cipher block: Malformed encrypted record data");
+				return -1;
+			}
+
 			switch (client_cs->security_parameters.enc_key_length)
 			{
 				case 16: rawhttps_aes_128_cbc_decrypt(record_data_without_iv, client_cs->cipher_state.enc_key,
@@ -228,10 +239,28 @@ static int cipher_block_decrypt(rawhttps_connection_state* client_cs, unsigned c
 	
 	// Parts of the already decrypted block
 	int padding_length_position = record_data_without_iv_length - 1;
-	unsigned char padding_length = result[record_data_without_iv_length - 1];
+	if (padding_length_position < 0) {
+		rawhttps_logger_log_error("Error decrypting cipher block: Wrong padding length position");
+		return -1;
+	}
+	unsigned char padding_length = result[padding_length_position];
 	int padding_position = padding_length_position - padding_length;
+	if (padding_position >= record_data_without_iv_length || padding_position < 0) {
+		rawhttps_logger_log_error("Error decrypting cipher block: Wrong padding position");
+		return -1;
+	}
+	for (int i = padding_position; i < record_data_without_iv_length; ++i) {
+		if (result[i] == padding_length + 1) {
+			rawhttps_logger_log_error("Error decrypting cipher block: Malformed padding");
+			return -1;
+		}
+	}
 	int mac_position = padding_position - client_cs->security_parameters.mac_length;
 	int content_position = 0;
+	if (mac_position + client_cs->security_parameters.mac_length >= record_data_without_iv_length || mac_position < 0) {
+		rawhttps_logger_log_error("Error decrypting cipher block: Wrong MAC position");
+		return -1;
+	}
 	unsigned char* mac = &result[mac_position];
 	unsigned char* content = &result[content_position];
 	int content_length = mac_position;
@@ -394,6 +423,10 @@ long long rawhttps_record_get(rawhttps_record_buffer* record_buffer, int connect
 	}
 
 	long long decrypted_record_data_length = record_data_decrypt(client_cs, ptr, record_length, data, *type);
+	if (decrypted_record_data_length == -1) {
+		*status = RAWHTTPS_RECORD_STATUS_MALFORMED_PACKET;
+		return -1;
+	}
 	assert(decrypted_record_data_length <= RECORD_PROTOCOL_TLS_PLAIN_TEXT_FRAGMENT_MAX_SIZE);
 	rawhttps_record_buffer_clear(record_buffer);
 
