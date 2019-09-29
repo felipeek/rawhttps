@@ -46,6 +46,8 @@ void root_handle(const void* connection, const rawhttps_request* request, rawhtt
 		char secret_response_header[] = "Secret-Response-Header";
 		char secret_response_header_value[] = "Secret-Value";
 		rawhttps_response_add_header(response, secret_response_header, sizeof(secret_response_header) - 1, secret_response_header_value, sizeof(secret_response_header_value) - 1);
+		response->status_code = 200;
+		rawhttps_response_flush(connection, response);
 	}
 	else
 	{
@@ -53,9 +55,9 @@ void root_handle(const void* connection, const rawhttps_request* request, rawhtt
 		char buf[] = "<h1>Welcome to rawhttps server!</h1>";
 		response->response_content = buf;
 		response->response_content_size = sizeof(buf) - 1;
+		response->status_code = 200;
+		rawhttps_response_flush(connection, response);
 	}
-	response->status_code = 200;
-	rawhttps_response_flush(connection, response);
 }
 
 void foo_handle(const void* connection, const rawhttps_request* request, rawhttps_response* response)
