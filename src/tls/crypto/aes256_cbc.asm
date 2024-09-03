@@ -15,6 +15,10 @@ global _rawhttps_aes_256_cbc_decrypt
 _aes_calculate_keys: jmp aes_calculate_keys
 _rawhttps_aes_256_cbc_encrypt: jmp rawhttps_aes_256_cbc_encrypt
 _rawhttps_aes_256_cbc_decrypt: jmp rawhttps_aes_256_cbc_decrypt
+%else
+global aes_calculate_keys
+global rawhttps_aes_256_cbc_encrypt
+global rawhttps_aes_256_cbc_decrypt
 %endif
 
 section .text
