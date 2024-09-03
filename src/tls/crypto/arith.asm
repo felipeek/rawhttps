@@ -1,7 +1,19 @@
+%ifdef __APPLE__
+global _div_word
+global _mul_word
+global _add_u64
+global _sub_u64
+
+_div_word: jmp div_word
+_mul_word: jmp mul_word
+_add_u64: jmp add_u64
+_sub_u64: jmp sub_u64
+%else
 global div_word
 global mul_word
 global add_u64
 global sub_u64
+%endif
 
 section .text
 

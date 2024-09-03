@@ -5,9 +5,17 @@
 ; R9  -> RCX
 ; STACK1 -> R8
 
-global aes_calculate_keys
-global rawhttps_aes_256_cbc_encrypt
-global rawhttps_aes_256_cbc_decrypt
+%ifdef __APPLE__
+; Export aliased symbols for macOS with a leading underscore
+global _aes_calculate_keys
+global _rawhttps_aes_256_cbc_encrypt
+global _rawhttps_aes_256_cbc_decrypt
+
+; Create alias labels that refer to the original functions
+_aes_calculate_keys: jmp aes_calculate_keys
+_rawhttps_aes_256_cbc_encrypt: jmp rawhttps_aes_256_cbc_encrypt
+_rawhttps_aes_256_cbc_decrypt: jmp rawhttps_aes_256_cbc_decrypt
+%endif
 
 section .text
 
@@ -167,7 +175,6 @@ start_aes_enc:
     ret
 
 rawhttps_aes_256_cbc_decrypt:
-
     ; Decrypt
 	mov r11, rcx
 	

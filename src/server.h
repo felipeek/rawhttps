@@ -1,7 +1,6 @@
 #ifndef RAWHTTPS_SERVER_H
 #define RAWHTTPS_SERVER_H
 #include "http/http_handler_tree.h"
-#include "linux/limits.h"
 
 typedef struct {
 	int sockfd;

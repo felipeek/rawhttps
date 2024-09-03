@@ -2,11 +2,26 @@
 ;     nasm -felf64 hello.asm
 ; ----------------------------------------------------------------------------------------
 
+%ifdef __APPLE__
+global _random_64bit_integer
+global _random_integer
+global _clock_counter
+global _random_s64
+global _is_pow2
+
+_random_64bit_integer: jmp random_64bit_integer
+_random_integer: jmp random_integer
+_clock_counter: jmp clock_counter
+_random_s64: jmp random_s64
+_is_pow2: jmp is_pow2
+%else
 global random_64bit_integer
 global random_integer
 global clock_counter
 global random_s64
 global is_pow2
+%endif
+
 
 section .text
 random_64bit_integer:

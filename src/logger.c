@@ -27,14 +27,20 @@ static void logger_log_out(FILE* target, const char* level, const char* format, 
 {
 	if (log_level == RAWHTTPS_LOG_LEVEL_DISABLED) return;
 
+#ifdef __APPLE__
+	uint64_t tid;
+	pthread_threadid_np(NULL, &tid);  // MacOS way of getting thread id
+	pid_t pid = (pid_t)tid;
+#else
 	pid_t pid = syscall(__NR_gettid);
-    size_t needed = snprintf(NULL, 0, "[%s]\t[%d]\t%s\n", level, pid, format) + 1;
-    char* buf = malloc(needed);
-    sprintf(buf, "[%s]\t[%d]\t%s\n", level, pid, format);
+#endif
+	size_t needed = snprintf(NULL, 0, "[%s]\t[%d]\t%s\n", level, pid, format) + 1;
+	char* buf = malloc(needed);
+	sprintf(buf, "[%s]\t[%d]\t%s\n", level, pid, format);
 	pthread_mutex_lock(&log_mutex);
-    vfprintf(target, buf, argptr);
+	vfprintf(target, buf, argptr);
 	pthread_mutex_unlock(&log_mutex);
-    free(buf);
+	free(buf);
 }
 
 void rawhttps_logger_log(rawhttps_log_level log_level, const char* msg)

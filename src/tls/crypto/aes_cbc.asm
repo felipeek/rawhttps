@@ -6,8 +6,17 @@
 ; R8
 ; R9
 
+%ifdef __APPLE__
+global _rawhttps_aes_128_cbc_encrypt
+global _rawhttps_aes_128_cbc_decrypt
+
+_rawhttps_aes_128_cbc_encrypt: jmp rawhttps_aes_128_cbc_encrypt
+_rawhttps_aes_128_cbc_decrypt: jmp rawhttps_aes_128_cbc_decrypt
+%else
 global rawhttps_aes_128_cbc_encrypt
 global rawhttps_aes_128_cbc_decrypt
+%endif
+
 
 section .text
 

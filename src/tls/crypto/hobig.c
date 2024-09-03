@@ -26,6 +26,21 @@ double os_time_us() {
     u64 res = t_spec.tv_nsec + 1000000000 * t_spec.tv_sec;
     return (double)res / 1000.0;
 }
+#elif defined(__APPLE__)
+#include <stdint.h>
+#include <mach/mach_time.h>
+double os_time_us() {
+    static mach_timebase_info_data_t timebase;
+    uint64_t time = mach_absolute_time();
+    
+    // Convert to nanoseconds
+    if (timebase.denom == 0) {
+        mach_timebase_info(&timebase);
+    }
+    
+    uint64_t time_ns = time * timebase.numer / timebase.denom;
+    return (double)time_ns / 1000.0;  // Convert to microseconds
+}
 #else
 u64 random_integer(u64 min, u64 max) {
     return 1;
