@@ -25,12 +25,24 @@ global is_pow2
 
 section .text
 random_64bit_integer:
+%ifdef __APPLE__
+    ; rdseed is not available on M2, not even when running amd64 code.
+    ; For now we will simply return 0, this obviously need to be implemented
+    mov rax, 0
+%else
     rdseed rax
+%endif
     ret
 
 random_s64:
 random_integer:
+%ifdef __APPLE__
+    ; rdseed is not available on M2, not even when running amd64 code.
+    ; For now we will simply consider 0, this obviously need to be implemented
+    mov rax, 0
+%else
     rdseed rax      ; R
+%endif
     ;rdrand rax
     xor rdx, rdx
     sub rsi, rdi    ; max = max - min
