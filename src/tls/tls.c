@@ -510,6 +510,10 @@ int rawhttps_tls_handshake(rawhttps_tls_state* ts, int connected_socket)
 		return -1;
 	}
 
+	rawhttps_logger_log_error("My cool error");
+	if (rawhttps_tls_sender_alert_send(&ts->server_connection_state, connected_socket, ALERT_LEVEL_WARNING, CLOSE_NOTIFY))
+		rawhttps_logger_log_error("Error sending close notify alert");
+
 	cipher_suite_type chosen_cipher;
 	if (cipher_suite_choose(&chosen_cipher, client_cipher_suites, client_cipher_suites_length))
 	{
